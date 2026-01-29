@@ -486,9 +486,9 @@ class _ChatPanel extends StatelessWidget {
           child: Row(
             children: [
               IconButton(
-                tooltip: '上传文件（图片/txt）',
+                tooltip: '添加文件（图片/txt）',
                 onPressed: isGenerating ? null : onPickAttachments,
-                icon: const Icon(Icons.attach_file),
+                icon: const Icon(Icons.add_circle_outline),
               ),
               Expanded(
                 child: TextField(
