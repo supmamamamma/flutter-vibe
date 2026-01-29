@@ -3,6 +3,7 @@ import 'package:sembast/sembast.dart';
 
 import '../../../shared/persistence/app_database.dart';
 import '../application/settings_state.dart';
+import '../domain/llm_profile.dart';
 import '../domain/llm_provider.dart';
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
@@ -31,45 +32,121 @@ class SettingsRepository {
 
   Map<String, Object?> _toJson(SettingsState s) {
     return {
-      'activeProvider': s.activeProvider.name,
+      'activeProfileId': s.activeProfileId,
       'useStreaming': s.useStreaming,
-      'openAiApiKey': s.openAiApiKey,
-      'geminiApiKey': s.geminiApiKey,
-      'claudeApiKey': s.claudeApiKey,
-      'openAiBaseUrl': s.openAiBaseUrl,
-      'geminiBaseUrl': s.geminiBaseUrl,
-      'claudeBaseUrl': s.claudeBaseUrl,
-      'openAiModel': s.openAiModel,
-      'geminiModel': s.geminiModel,
-      'claudeModel': s.claudeModel,
-      'claudeMaxTokens': s.claudeMaxTokens,
-      'openAiMaxTokens': s.openAiMaxTokens,
-      'schemaVersion': 1,
+      'profiles': [
+        for (final p in s.profiles)
+          {
+            'id': p.id,
+            'name': p.name,
+            'provider': p.provider.name,
+            'baseUrl': p.baseUrl,
+            'apiKey': p.apiKey,
+            'model': p.model,
+            'claudeMaxTokens': p.claudeMaxTokens,
+            'openAiMaxTokens': p.openAiMaxTokens,
+          },
+      ],
+      'schemaVersion': 2,
     };
   }
 
   SettingsState _fromJson(Map<String, Object?> json) {
-    final providerName = json['activeProvider'] as String?;
-    final activeProvider = LlmProvider.values
-        .where((p) => p.name == providerName)
-        .cast<LlmProvider?>()
-        .firstWhere((p) => p != null, orElse: () => null);
+    final schemaVersion = json['schemaVersion'] as int?;
+
+    // v1 -> v2 迁移：将原 activeProvider + 各家配置折叠为一个 profile。
+    if (schemaVersion == null || schemaVersion <= 1) {
+      final providerName = json['activeProvider'] as String?;
+      final provider = LlmProvider.values
+          .where((p) => p.name == providerName)
+          .cast<LlmProvider?>()
+          .firstWhere((p) => p != null, orElse: () => null);
+
+      final activeProvider = provider ?? LlmProvider.openai;
+      final useStreaming = (json['useStreaming'] as bool?) ?? false;
+
+      final profile = switch (activeProvider) {
+        LlmProvider.openai => LlmProfile.create(
+            name: 'OpenAI 默认',
+            provider: LlmProvider.openai,
+            baseUrl: (json['openAiBaseUrl'] as String?) ?? 'https://api.openai.com',
+            model: (json['openAiModel'] as String?) ?? 'gpt-4o-mini',
+          ).copyWith(
+            apiKey: (json['openAiApiKey'] as String?) ?? '',
+            openAiMaxTokens: json['openAiMaxTokens'] as int?,
+          ),
+        LlmProvider.gemini => LlmProfile.create(
+            name: 'Gemini 默认',
+            provider: LlmProvider.gemini,
+            baseUrl: (json['geminiBaseUrl'] as String?) ??
+                'https://generativelanguage.googleapis.com',
+            model: (json['geminiModel'] as String?) ?? 'gemini-1.5-flash',
+          ).copyWith(
+            apiKey: (json['geminiApiKey'] as String?) ?? '',
+          ),
+        LlmProvider.claude => LlmProfile.create(
+            name: 'Claude 默认',
+            provider: LlmProvider.claude,
+            baseUrl:
+                (json['claudeBaseUrl'] as String?) ?? 'https://api.anthropic.com',
+            model: (json['claudeModel'] as String?) ?? 'claude-3-5-sonnet-latest',
+          ).copyWith(
+            apiKey: (json['claudeApiKey'] as String?) ?? '',
+            claudeMaxTokens: (json['claudeMaxTokens'] as int?) ?? 1024,
+          ),
+      };
+
+      return SettingsState(
+        profiles: [profile],
+        activeProfileId: profile.id,
+        useStreaming: useStreaming,
+      );
+    }
+
+    final profilesRaw = json['profiles'] as List?;
+    final profiles = profilesRaw
+            ?.whereType<Map>()
+            .map((m) {
+              final p = m.cast<String, Object?>();
+              final providerName = p['provider'] as String?;
+              final provider = LlmProvider.values
+                  .where((x) => x.name == providerName)
+                  .cast<LlmProvider?>()
+                  .firstWhere((x) => x != null, orElse: () => null);
+              return LlmProfile(
+                id: (p['id'] as String?) ?? '',
+                name: (p['name'] as String?) ?? '未命名',
+                provider: provider ?? LlmProvider.openai,
+                baseUrl: (p['baseUrl'] as String?) ?? 'https://api.openai.com',
+                apiKey: (p['apiKey'] as String?) ?? '',
+                model: (p['model'] as String?) ?? 'gpt-4o-mini',
+                claudeMaxTokens: (p['claudeMaxTokens'] as int?) ?? 1024,
+                openAiMaxTokens: p['openAiMaxTokens'] as int?,
+              );
+            })
+            .where((p) => p.id.isNotEmpty)
+            .toList(growable: false) ??
+        const <LlmProfile>[];
+
+    final activeProfileId = (json['activeProfileId'] as String?) ?? '';
+    final safeProfiles = profiles.isNotEmpty
+        ? profiles
+        : [
+            LlmProfile.create(
+              name: 'OpenAI 默认',
+              provider: LlmProvider.openai,
+              baseUrl: 'https://api.openai.com',
+              model: 'gpt-4o-mini',
+            ),
+          ];
+    final resolvedActiveId = safeProfiles.any((p) => p.id == activeProfileId)
+        ? activeProfileId
+        : safeProfiles.first.id;
 
     return SettingsState(
-      activeProvider: activeProvider ?? LlmProvider.openai,
+      profiles: safeProfiles,
+      activeProfileId: resolvedActiveId,
       useStreaming: (json['useStreaming'] as bool?) ?? false,
-      openAiApiKey: (json['openAiApiKey'] as String?) ?? '',
-      geminiApiKey: (json['geminiApiKey'] as String?) ?? '',
-      claudeApiKey: (json['claudeApiKey'] as String?) ?? '',
-      openAiBaseUrl: (json['openAiBaseUrl'] as String?) ?? 'https://api.openai.com',
-      geminiBaseUrl: (json['geminiBaseUrl'] as String?) ??
-          'https://generativelanguage.googleapis.com',
-      claudeBaseUrl: (json['claudeBaseUrl'] as String?) ?? 'https://api.anthropic.com',
-      openAiModel: (json['openAiModel'] as String?) ?? 'gpt-4o-mini',
-      geminiModel: (json['geminiModel'] as String?) ?? 'gemini-1.5-flash',
-      claudeModel: (json['claudeModel'] as String?) ?? 'claude-3-5-sonnet-latest',
-      claudeMaxTokens: (json['claudeMaxTokens'] as int?) ?? 1024,
-      openAiMaxTokens: json['openAiMaxTokens'] as int?,
     );
   }
 }

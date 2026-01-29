@@ -214,16 +214,17 @@ class LlmService {
     required DateTime start,
     required List<ChatMessage> messages,
   }) async {
-    final key = settings.openAiApiKey.trim();
+    final p = settings.activeProfile;
+    final key = p.apiKey.trim();
     if (key.isEmpty) {
       throw const LlmException('OpenAI API Key 为空，请先在 Settings 填写。');
     }
 
-    final uri = Uri.parse('${settings.openAiBaseUrl}/v1/chat/completions');
+    final uri = Uri.parse('${p.baseUrl}/v1/chat/completions');
     final body = {
-      'model': settings.openAiModel,
+      'model': p.model,
       'stream': false,
-      if (settings.openAiMaxTokens != null) 'max_tokens': settings.openAiMaxTokens,
+      if (p.openAiMaxTokens != null) 'max_tokens': p.openAiMaxTokens,
       'messages': [
         for (final m in messages) _openAiMessage(m),
       ],
@@ -263,20 +264,21 @@ class LlmService {
     required DateTime start,
     required List<ChatMessage> messages,
   }) async* {
-    final key = settings.openAiApiKey.trim();
+    final p = settings.activeProfile;
+    final key = p.apiKey.trim();
     if (key.isEmpty) {
       throw const LlmException('OpenAI API Key 为空，请先在 Settings 填写。');
     }
 
-    final uri = Uri.parse('${settings.openAiBaseUrl}/v1/chat/completions');
+    final uri = Uri.parse('${p.baseUrl}/v1/chat/completions');
     final body = {
-      'model': settings.openAiModel,
+      'model': p.model,
       'stream': true,
       // OpenAI 兼容接口：请求在流的最后一个 chunk 中包含 usage。
       'stream_options': {
         'include_usage': true,
       },
-      if (settings.openAiMaxTokens != null) 'max_tokens': settings.openAiMaxTokens,
+      if (p.openAiMaxTokens != null) 'max_tokens': p.openAiMaxTokens,
       'messages': [
         for (final m in messages) _openAiMessage(m),
       ],
@@ -339,7 +341,8 @@ class LlmService {
     required DateTime start,
     required List<ChatMessage> messages,
   }) async {
-    final key = settings.geminiApiKey.trim();
+    final p = settings.activeProfile;
+    final key = p.apiKey.trim();
     if (key.isEmpty) {
       throw const LlmException('Gemini API Key 为空，请先在 Settings 填写。');
     }
@@ -351,7 +354,7 @@ class LlmService {
     final contents = [for (final m in history) _geminiContent(m)];
 
     final uri = Uri.parse(
-      '${settings.geminiBaseUrl}/v1beta/models/${settings.geminiModel}:generateContent',
+      '${p.baseUrl}/v1beta/models/${p.model}:generateContent',
     ).replace(queryParameters: {'key': key});
 
     final body = {
@@ -398,7 +401,8 @@ class LlmService {
     required DateTime start,
     required List<ChatMessage> messages,
   }) async* {
-    final key = settings.geminiApiKey.trim();
+    final p = settings.activeProfile;
+    final key = p.apiKey.trim();
     if (key.isEmpty) {
       throw const LlmException('Gemini API Key 为空，请先在 Settings 填写。');
     }
@@ -410,7 +414,7 @@ class LlmService {
 
     // Gemini REST Streaming: :streamGenerateContent
     final uri = Uri.parse(
-      '${settings.geminiBaseUrl}/v1beta/models/${settings.geminiModel}:streamGenerateContent',
+      '${p.baseUrl}/v1beta/models/${p.model}:streamGenerateContent',
     ).replace(queryParameters: {'key': key});
 
     final body = {
@@ -488,7 +492,8 @@ class LlmService {
     required DateTime start,
     required List<ChatMessage> messages,
   }) async {
-    final key = settings.claudeApiKey.trim();
+    final p = settings.activeProfile;
+    final key = p.apiKey.trim();
     if (key.isEmpty) {
       throw const LlmException('Claude API Key 为空，请先在 Settings 填写。');
     }
@@ -496,10 +501,10 @@ class LlmService {
     final system = _systemFromHistory(messages);
     final history = _nonSystemHistory(messages);
 
-    final uri = Uri.parse('${settings.claudeBaseUrl}/v1/messages');
+    final uri = Uri.parse('${p.baseUrl}/v1/messages');
     final body = {
-      'model': settings.claudeModel,
-      'max_tokens': settings.claudeMaxTokens,
+      'model': p.model,
+      'max_tokens': p.claudeMaxTokens,
       if (system.isNotEmpty) 'system': system,
       'messages': [for (final m in history) _claudeMessage(m)],
     };
@@ -540,7 +545,8 @@ class LlmService {
     required DateTime start,
     required List<ChatMessage> messages,
   }) async* {
-    final key = settings.claudeApiKey.trim();
+    final p = settings.activeProfile;
+    final key = p.apiKey.trim();
     if (key.isEmpty) {
       throw const LlmException('Claude API Key 为空，请先在 Settings 填写。');
     }
@@ -548,10 +554,10 @@ class LlmService {
     final system = _systemFromHistory(messages);
     final history = _nonSystemHistory(messages);
 
-    final uri = Uri.parse('${settings.claudeBaseUrl}/v1/messages');
+    final uri = Uri.parse('${p.baseUrl}/v1/messages');
     final body = {
-      'model': settings.claudeModel,
-      'max_tokens': settings.claudeMaxTokens,
+      'model': p.model,
+      'max_tokens': p.claudeMaxTokens,
       'stream': true,
       if (system.isNotEmpty) 'system': system,
       'messages': [for (final m in history) _claudeMessage(m)],

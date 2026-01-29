@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/llm_provider.dart';
+import '../domain/llm_profile.dart';
 import '../data/settings_repository.dart';
 import 'settings_state.dart';
 
@@ -16,23 +17,17 @@ class SettingsController extends Notifier<SettingsState> {
   SettingsState build() {
     final repo = ref.read(settingsRepositoryProvider);
 
-    final initial = const SettingsState(
-      activeProvider: LlmProvider.openai,
+    final defaultProfile = LlmProfile.create(
+      name: 'OpenAI 默认',
+      provider: LlmProvider.openai,
+      baseUrl: 'https://api.openai.com',
+      model: 'gpt-4o-mini',
+    );
+
+    final initial = SettingsState(
+      profiles: [defaultProfile],
+      activeProfileId: defaultProfile.id,
       useStreaming: false,
-      openAiApiKey: '',
-      geminiApiKey: '',
-      claudeApiKey: '',
-
-      openAiBaseUrl: 'https://api.openai.com',
-      geminiBaseUrl: 'https://generativelanguage.googleapis.com',
-      claudeBaseUrl: 'https://api.anthropic.com',
-
-      openAiModel: 'gpt-4o-mini',
-      geminiModel: 'gemini-1.5-flash',
-      claudeModel: 'claude-3-5-sonnet-latest',
-
-      claudeMaxTokens: 1024,
-      openAiMaxTokens: null,
     );
 
     if (!_hydrated) {
@@ -60,23 +55,39 @@ class SettingsController extends Notifier<SettingsState> {
     unawaited(repo.save(state));
   }
 
-  void setActiveProvider(LlmProvider provider) {
-    state = state.copyWith(activeProvider: provider);
+  void setActiveProfile(String profileId) {
+    if (!state.profiles.any((p) => p.id == profileId)) return;
+    state = state.copyWith(activeProfileId: profileId);
     _persist();
   }
 
-  void setOpenAiApiKey(String value) {
-    state = state.copyWith(openAiApiKey: value);
+  void addProfile(LlmProfile profile) {
+    state = state.copyWith(
+      profiles: [...state.profiles, profile],
+      activeProfileId: profile.id,
+    );
     _persist();
   }
 
-  void setGeminiApiKey(String value) {
-    state = state.copyWith(geminiApiKey: value);
+  void renameProfile({required String profileId, required String name}) {
+    final nextName = name.trim().isEmpty ? '未命名' : name.trim();
+    state = state.copyWith(
+      profiles: state.profiles
+          .map((p) => p.id == profileId ? p.copyWith(name: nextName) : p)
+          .toList(growable: false),
+    );
     _persist();
   }
 
-  void setClaudeApiKey(String value) {
-    state = state.copyWith(claudeApiKey: value);
+  void deleteProfile(String profileId) {
+    final remaining =
+        state.profiles.where((p) => p.id != profileId).toList(growable: false);
+    if (remaining.isEmpty) return;
+    final nextActive = (state.activeProfileId == profileId)
+        ? remaining.first.id
+        : state.activeProfileId;
+
+    state = state.copyWith(profiles: remaining, activeProfileId: nextActive);
     _persist();
   }
 
@@ -85,40 +96,78 @@ class SettingsController extends Notifier<SettingsState> {
     _persist();
   }
 
-  void setOpenAiBaseUrl(String value) {
-    state = state.copyWith(openAiBaseUrl: value.trim());
+  void setProfileProvider(LlmProvider provider) {
+    final id = state.activeProfileId;
+    state = state.copyWith(
+      profiles: state.profiles
+          .map((p) => p.id == id ? p.copyWith(provider: provider) : p)
+          .toList(growable: false),
+    );
     _persist();
   }
 
-  void setGeminiBaseUrl(String value) {
-    state = state.copyWith(geminiBaseUrl: value.trim());
+  void setProfileApiKey(String value) {
+    final id = state.activeProfileId;
+    state = state.copyWith(
+      profiles: state.profiles
+          .map((p) => p.id == id ? p.copyWith(apiKey: value) : p)
+          .toList(growable: false),
+    );
     _persist();
   }
 
-  void setClaudeBaseUrl(String value) {
-    state = state.copyWith(claudeBaseUrl: value.trim());
+  void setProfileBaseUrl(String value) {
+    final id = state.activeProfileId;
+    state = state.copyWith(
+      profiles: state.profiles
+          .map((p) => p.id == id ? p.copyWith(baseUrl: value.trim()) : p)
+          .toList(growable: false),
+    );
     _persist();
   }
 
-  void setOpenAiModel(String value) {
-    state = state.copyWith(openAiModel: value.trim());
+  void setProfileModel(String value) {
+    final id = state.activeProfileId;
+    state = state.copyWith(
+      profiles: state.profiles
+          .map((p) => p.id == id ? p.copyWith(model: value.trim()) : p)
+          .toList(growable: false),
+    );
     _persist();
   }
 
-  void setGeminiModel(String value) {
-    state = state.copyWith(geminiModel: value.trim());
-    _persist();
-  }
-
-  void setClaudeModel(String value) {
-    state = state.copyWith(claudeModel: value.trim());
-    _persist();
-  }
-
-  void setClaudeMaxTokens(String value) {
+  void setProfileClaudeMaxTokens(String value) {
     final parsed = int.tryParse(value.trim());
     if (parsed == null) return;
-    state = state.copyWith(claudeMaxTokens: parsed);
+    final id = state.activeProfileId;
+    state = state.copyWith(
+      profiles: state.profiles
+          .map((p) => p.id == id ? p.copyWith(claudeMaxTokens: parsed) : p)
+          .toList(growable: false),
+    );
+    _persist();
+  }
+
+  void setProfileOpenAiMaxTokens(String value) {
+    final id = state.activeProfileId;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      state = state.copyWith(
+        profiles: state.profiles
+            .map((p) => p.id == id ? p.copyWith(clearOpenAiMaxTokens: true) : p)
+            .toList(growable: false),
+      );
+      _persist();
+      return;
+    }
+
+    final parsed = int.tryParse(trimmed);
+    if (parsed == null) return;
+    state = state.copyWith(
+      profiles: state.profiles
+          .map((p) => p.id == id ? p.copyWith(openAiMaxTokens: parsed) : p)
+          .toList(growable: false),
+    );
     _persist();
   }
 }

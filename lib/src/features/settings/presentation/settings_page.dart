@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../application/settings_controller.dart';
 import '../application/settings_state.dart';
+import '../domain/llm_profile.dart';
 import '../domain/llm_provider.dart';
 
 /// Settings
@@ -26,6 +27,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   void initState() {
     super.initState();
 
+    // 仍保留 provider 的 Tab 视图（便于不同 provider 的字段展示），
+    // 但 active provider 由“当前 Profile.provider”决定。
     final initialIndex =
         LlmProvider.values.indexOf(ref.read(settingsControllerProvider).activeProvider);
 
@@ -35,21 +38,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       initialIndex: initialIndex,
     );
 
-    // Tab（点击/滑动）-> provider
+    // Tab -> 更新当前 profile 的 provider
     _tabController.addListener(() {
       final provider = LlmProvider.values[_tabController.index];
       final current = ref.read(settingsControllerProvider).activeProvider;
       if (provider == current) return;
-      ref.read(settingsControllerProvider.notifier).setActiveProvider(provider);
+      ref.read(settingsControllerProvider.notifier).setProfileProvider(provider);
     });
 
-    // provider（如下拉）-> Tab
+    // profile.provider -> Tab
     _settingsSub = ref.listenManual<SettingsState>(
       settingsControllerProvider,
       (prev, next) {
-      final targetIndex = LlmProvider.values.indexOf(next.activeProvider);
-      if (_tabController.index == targetIndex) return;
-      _tabController.animateTo(targetIndex);
+        final targetIndex = LlmProvider.values.indexOf(next.activeProvider);
+        if (_tabController.index == targetIndex) return;
+        _tabController.animateTo(targetIndex);
       },
     );
   }
@@ -65,6 +68,65 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsControllerProvider);
     final controller = ref.read(settingsControllerProvider.notifier);
+
+    Future<void> renameActiveProfile() async {
+      final nameController =
+          TextEditingController(text: settings.activeProfile.name);
+      final newName = await showDialog<String>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('重命名连接配置'),
+            content: TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '名称',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (value) => Navigator.of(context).pop(value),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(context).pop(nameController.text.trim()),
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      );
+      if (newName == null) return;
+      controller.renameProfile(profileId: settings.activeProfileId, name: newName);
+    }
+
+    void addProfile(LlmProvider provider) {
+      final profile = switch (provider) {
+        LlmProvider.openai => LlmProfile.create(
+            name: 'OpenAI 新连接',
+            provider: LlmProvider.openai,
+            baseUrl: 'https://api.openai.com',
+            model: 'gpt-4o-mini',
+          ),
+        LlmProvider.gemini => LlmProfile.create(
+            name: 'Gemini 新连接',
+            provider: LlmProvider.gemini,
+            baseUrl: 'https://generativelanguage.googleapis.com',
+            model: 'gemini-1.5-flash',
+          ),
+        LlmProvider.claude => LlmProfile.create(
+            name: 'Claude 新连接',
+            provider: LlmProvider.claude,
+            baseUrl: 'https://api.anthropic.com',
+            model: 'claude-3-5-sonnet-latest',
+          ),
+      };
+      controller.addProfile(profile);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -90,28 +152,60 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                     Expanded(
                       child: InputDecorator(
                         decoration: const InputDecoration(
-                          labelText: 'Active provider',
+                          labelText: '连接配置（Profile）',
                           border: OutlineInputBorder(),
                         ),
                         child: DropdownButtonHideUnderline(
-                          child: DropdownButton<LlmProvider>(
-                            value: settings.activeProvider,
+                          child: DropdownButton<String>(
+                            value: settings.activeProfileId,
                             isExpanded: true,
-                            items: LlmProvider.values
+                            items: settings.profiles
                                 .map(
                                   (p) => DropdownMenuItem(
-                                    value: p,
-                                    child: Text(p.label),
+                                    value: p.id,
+                                    child: Text('${p.name}（${p.provider.label}）'),
                                   ),
                                 )
                                 .toList(growable: false),
-                            onChanged: (p) {
-                              if (p == null) return;
-                              controller.setActiveProvider(p);
+                            onChanged: (id) {
+                              if (id == null) return;
+                              controller.setActiveProfile(id);
                             },
                           ),
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    PopupMenuButton<String>(
+                      tooltip: '连接配置操作',
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'rename':
+                            renameActiveProfile();
+                            break;
+                          case 'delete':
+                            controller.deleteProfile(settings.activeProfileId);
+                            break;
+                          case 'add_openai':
+                            addProfile(LlmProvider.openai);
+                            break;
+                          case 'add_gemini':
+                            addProfile(LlmProvider.gemini);
+                            break;
+                          case 'add_claude':
+                            addProfile(LlmProvider.claude);
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(value: 'rename', child: Text('重命名当前配置')),
+                        PopupMenuItem(value: 'delete', child: Text('删除当前配置')),
+                        PopupMenuDivider(),
+                        PopupMenuItem(value: 'add_openai', child: Text('新增 OpenAI 配置')),
+                        PopupMenuItem(value: 'add_gemini', child: Text('新增 Gemini 配置')),
+                        PopupMenuItem(value: 'add_claude', child: Text('新增 Claude 配置')),
+                      ],
+                      child: const Icon(Icons.more_vert),
                     ),
                   ],
                 ),
@@ -210,52 +304,72 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
   late final TextEditingController _apiKey;
+  late final TextEditingController _maxTokens;
 
   final FocusNode _baseUrlFocus = FocusNode();
   final FocusNode _modelFocus = FocusNode();
   final FocusNode _apiKeyFocus = FocusNode();
+  final FocusNode _maxTokensFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    _baseUrl = TextEditingController(text: widget.settings.openAiBaseUrl);
-    _model = TextEditingController(text: widget.settings.openAiModel);
-    _apiKey = TextEditingController(text: widget.settings.openAiApiKey);
+    _baseUrl = TextEditingController(text: widget.settings.activeProfile.baseUrl);
+    _model = TextEditingController(text: widget.settings.activeProfile.model);
+    _apiKey = TextEditingController(text: widget.settings.activeProfile.apiKey);
+    _maxTokens = TextEditingController(
+      text: widget.settings.activeProfile.openAiMaxTokens?.toString() ?? '',
+    );
 
     _baseUrlFocus.addListener(_commitIfNeeded);
     _modelFocus.addListener(_commitIfNeeded);
     _apiKeyFocus.addListener(_commitIfNeeded);
+    _maxTokensFocus.addListener(_commitIfNeeded);
   }
 
   @override
   void didUpdateWidget(covariant _OpenAiSettingsTabBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_baseUrlFocus.hasFocus && _baseUrl.text != widget.settings.openAiBaseUrl) {
-      _baseUrl.text = widget.settings.openAiBaseUrl;
+    final p = widget.settings.activeProfile;
+    if (!_baseUrlFocus.hasFocus && _baseUrl.text != p.baseUrl) {
+      _baseUrl.text = p.baseUrl;
     }
-    if (!_modelFocus.hasFocus && _model.text != widget.settings.openAiModel) {
-      _model.text = widget.settings.openAiModel;
+    if (!_modelFocus.hasFocus && _model.text != p.model) {
+      _model.text = p.model;
     }
-    if (!_apiKeyFocus.hasFocus && _apiKey.text != widget.settings.openAiApiKey) {
-      _apiKey.text = widget.settings.openAiApiKey;
+    if (!_apiKeyFocus.hasFocus && _apiKey.text != p.apiKey) {
+      _apiKey.text = p.apiKey;
+    }
+
+    final maxTokensText = p.openAiMaxTokens?.toString() ?? '';
+    if (!_maxTokensFocus.hasFocus && _maxTokens.text != maxTokensText) {
+      _maxTokens.text = maxTokensText;
     }
   }
 
   void _commitIfNeeded() {
     // 只在失焦时提交，避免 Web 输入法组合态导致 TextInput 断言。
-    if (_baseUrlFocus.hasFocus || _modelFocus.hasFocus || _apiKeyFocus.hasFocus) {
+    if (_baseUrlFocus.hasFocus ||
+        _modelFocus.hasFocus ||
+        _apiKeyFocus.hasFocus ||
+        _maxTokensFocus.hasFocus) {
       return;
     }
 
-    final s = widget.settings;
-    if (_baseUrl.text.trim() != s.openAiBaseUrl) {
-      widget.controller.setOpenAiBaseUrl(_baseUrl.text);
+    final p = widget.settings.activeProfile;
+    if (_baseUrl.text.trim() != p.baseUrl) {
+      widget.controller.setProfileBaseUrl(_baseUrl.text);
     }
-    if (_model.text.trim() != s.openAiModel) {
-      widget.controller.setOpenAiModel(_model.text);
+    if (_model.text.trim() != p.model) {
+      widget.controller.setProfileModel(_model.text);
     }
-    if (_apiKey.text != s.openAiApiKey) {
-      widget.controller.setOpenAiApiKey(_apiKey.text);
+    if (_apiKey.text != p.apiKey) {
+      widget.controller.setProfileApiKey(_apiKey.text);
+    }
+
+    final maxTokensText = p.openAiMaxTokens?.toString() ?? '';
+    if (_maxTokens.text.trim() != maxTokensText) {
+      widget.controller.setProfileOpenAiMaxTokens(_maxTokens.text);
     }
   }
 
@@ -264,12 +378,15 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
     _baseUrlFocus.removeListener(_commitIfNeeded);
     _modelFocus.removeListener(_commitIfNeeded);
     _apiKeyFocus.removeListener(_commitIfNeeded);
+    _maxTokensFocus.removeListener(_commitIfNeeded);
     _baseUrlFocus.dispose();
     _modelFocus.dispose();
     _apiKeyFocus.dispose();
+    _maxTokensFocus.dispose();
     _baseUrl.dispose();
     _model.dispose();
     _apiKey.dispose();
+    _maxTokens.dispose();
     super.dispose();
   }
 
@@ -316,6 +433,19 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
           obscureText: true,
           onSubmitted: (_) => _commitIfNeeded(),
         ),
+        const SizedBox(height: 16),
+        const Text('Limits', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _maxTokens,
+          focusNode: _maxTokensFocus,
+          decoration: const InputDecoration(
+            labelText: 'OpenAI max_tokens（可选，留空表示不传）',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
       ],
     );
   }
@@ -343,9 +473,9 @@ class _GeminiSettingsTabBodyState extends State<_GeminiSettingsTabBody> {
   @override
   void initState() {
     super.initState();
-    _baseUrl = TextEditingController(text: widget.settings.geminiBaseUrl);
-    _model = TextEditingController(text: widget.settings.geminiModel);
-    _apiKey = TextEditingController(text: widget.settings.geminiApiKey);
+    _baseUrl = TextEditingController(text: widget.settings.activeProfile.baseUrl);
+    _model = TextEditingController(text: widget.settings.activeProfile.model);
+    _apiKey = TextEditingController(text: widget.settings.activeProfile.apiKey);
 
     _baseUrlFocus.addListener(_commitIfNeeded);
     _modelFocus.addListener(_commitIfNeeded);
@@ -355,14 +485,15 @@ class _GeminiSettingsTabBodyState extends State<_GeminiSettingsTabBody> {
   @override
   void didUpdateWidget(covariant _GeminiSettingsTabBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_baseUrlFocus.hasFocus && _baseUrl.text != widget.settings.geminiBaseUrl) {
-      _baseUrl.text = widget.settings.geminiBaseUrl;
+    final p = widget.settings.activeProfile;
+    if (!_baseUrlFocus.hasFocus && _baseUrl.text != p.baseUrl) {
+      _baseUrl.text = p.baseUrl;
     }
-    if (!_modelFocus.hasFocus && _model.text != widget.settings.geminiModel) {
-      _model.text = widget.settings.geminiModel;
+    if (!_modelFocus.hasFocus && _model.text != p.model) {
+      _model.text = p.model;
     }
-    if (!_apiKeyFocus.hasFocus && _apiKey.text != widget.settings.geminiApiKey) {
-      _apiKey.text = widget.settings.geminiApiKey;
+    if (!_apiKeyFocus.hasFocus && _apiKey.text != p.apiKey) {
+      _apiKey.text = p.apiKey;
     }
   }
 
@@ -371,15 +502,15 @@ class _GeminiSettingsTabBodyState extends State<_GeminiSettingsTabBody> {
       return;
     }
 
-    final s = widget.settings;
-    if (_baseUrl.text.trim() != s.geminiBaseUrl) {
-      widget.controller.setGeminiBaseUrl(_baseUrl.text);
+    final p = widget.settings.activeProfile;
+    if (_baseUrl.text.trim() != p.baseUrl) {
+      widget.controller.setProfileBaseUrl(_baseUrl.text);
     }
-    if (_model.text.trim() != s.geminiModel) {
-      widget.controller.setGeminiModel(_model.text);
+    if (_model.text.trim() != p.model) {
+      widget.controller.setProfileModel(_model.text);
     }
-    if (_apiKey.text != s.geminiApiKey) {
-      widget.controller.setGeminiApiKey(_apiKey.text);
+    if (_apiKey.text != p.apiKey) {
+      widget.controller.setProfileApiKey(_apiKey.text);
     }
   }
 
@@ -469,11 +600,11 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
   @override
   void initState() {
     super.initState();
-    _baseUrl = TextEditingController(text: widget.settings.claudeBaseUrl);
-    _model = TextEditingController(text: widget.settings.claudeModel);
-    _maxTokens =
-        TextEditingController(text: widget.settings.claudeMaxTokens.toString());
-    _apiKey = TextEditingController(text: widget.settings.claudeApiKey);
+    final p = widget.settings.activeProfile;
+    _baseUrl = TextEditingController(text: p.baseUrl);
+    _model = TextEditingController(text: p.model);
+    _maxTokens = TextEditingController(text: p.claudeMaxTokens.toString());
+    _apiKey = TextEditingController(text: p.apiKey);
 
     _baseUrlFocus.addListener(_commitIfNeeded);
     _modelFocus.addListener(_commitIfNeeded);
@@ -484,18 +615,19 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
   @override
   void didUpdateWidget(covariant _ClaudeSettingsTabBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_baseUrlFocus.hasFocus && _baseUrl.text != widget.settings.claudeBaseUrl) {
-      _baseUrl.text = widget.settings.claudeBaseUrl;
+    final p = widget.settings.activeProfile;
+    if (!_baseUrlFocus.hasFocus && _baseUrl.text != p.baseUrl) {
+      _baseUrl.text = p.baseUrl;
     }
-    if (!_modelFocus.hasFocus && _model.text != widget.settings.claudeModel) {
-      _model.text = widget.settings.claudeModel;
+    if (!_modelFocus.hasFocus && _model.text != p.model) {
+      _model.text = p.model;
     }
-    final maxTokensText = widget.settings.claudeMaxTokens.toString();
+    final maxTokensText = p.claudeMaxTokens.toString();
     if (!_maxTokensFocus.hasFocus && _maxTokens.text != maxTokensText) {
       _maxTokens.text = maxTokensText;
     }
-    if (!_apiKeyFocus.hasFocus && _apiKey.text != widget.settings.claudeApiKey) {
-      _apiKey.text = widget.settings.claudeApiKey;
+    if (!_apiKeyFocus.hasFocus && _apiKey.text != p.apiKey) {
+      _apiKey.text = p.apiKey;
     }
   }
 
@@ -507,18 +639,18 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
       return;
     }
 
-    final s = widget.settings;
-    if (_baseUrl.text.trim() != s.claudeBaseUrl) {
-      widget.controller.setClaudeBaseUrl(_baseUrl.text);
+    final p = widget.settings.activeProfile;
+    if (_baseUrl.text.trim() != p.baseUrl) {
+      widget.controller.setProfileBaseUrl(_baseUrl.text);
     }
-    if (_model.text.trim() != s.claudeModel) {
-      widget.controller.setClaudeModel(_model.text);
+    if (_model.text.trim() != p.model) {
+      widget.controller.setProfileModel(_model.text);
     }
-    if (_maxTokens.text.trim() != s.claudeMaxTokens.toString()) {
-      widget.controller.setClaudeMaxTokens(_maxTokens.text);
+    if (_maxTokens.text.trim() != p.claudeMaxTokens.toString()) {
+      widget.controller.setProfileClaudeMaxTokens(_maxTokens.text);
     }
-    if (_apiKey.text != s.claudeApiKey) {
-      widget.controller.setClaudeApiKey(_apiKey.text);
+    if (_apiKey.text != p.apiKey) {
+      widget.controller.setProfileApiKey(_apiKey.text);
     }
   }
 
