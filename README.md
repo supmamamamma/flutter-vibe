@@ -58,6 +58,104 @@ flutter run -d chrome
    - model（可选/必填取决于 Provider）
 2. 回到 Chat 页面开始对话。
 
+## 编译与部署指南（各平台）
+
+### Web / PWA（推荐）
+
+#### 本地构建（Release）
+
+```bash
+flutter build web --release
+```
+
+构建产物在 `build/web/`。
+
+#### 本地验证（静态服务器）
+
+> 直接双击打开 `build/web/index.html` 可能因为浏览器安全策略导致资源加载/路由异常，建议用静态服务器。
+
+- 如果你有 Python：
+
+```bash
+cd build/web
+python -m http.server 8080
+```
+
+然后访问 `http://localhost:8080/`。
+
+#### 部署到静态站点
+
+把 `build/web/` 目录内容上传到任意静态托管平台即可，例如：
+
+- Nginx / Caddy / Apache
+- GitHub Pages
+- Cloudflare Pages
+- Vercel / Netlify
+
+注意：
+
+- 如果使用前端路由（本项目使用 go_router），需要配置“History 模式回退”到 `index.html`。
+  - Nginx 示例（概念）：所有未知路径重写到 `/index.html`。
+- PWA 的图标与 manifest 在 [`web/manifest.json`](web/manifest.json:1) 与 [`web/index.html`](web/index.html:1)；若要自定义应用名/图标，从这两个文件入手。
+
+### Android（APK / AAB）
+
+#### 构建 APK
+
+```bash
+flutter build apk --release
+```
+
+产物一般在 `build/app/outputs/flutter-apk/app-release.apk`。
+
+#### 构建 AAB（上架 Google Play）
+
+```bash
+flutter build appbundle --release
+```
+
+产物一般在 `build/app/outputs/bundle/release/app-release.aab`。
+
+### iOS（IPA / App Store）
+
+> iOS 构建需要 macOS + Xcode。
+
+```bash
+flutter build ios --release
+```
+
+然后使用 Xcode 打开 `ios/Runner.xcworkspace` 进行签名与归档（Archive）并分发。
+
+### Windows（桌面版）
+
+```bash
+flutter build windows --release
+```
+
+产物一般在 `build/windows/x64/runner/Release/`。
+
+### macOS（桌面版）
+
+```bash
+flutter build macos --release
+```
+
+产物一般在 `build/macos/Build/Products/Release/`。
+
+### Linux（桌面版）
+
+```bash
+flutter build linux --release
+```
+
+产物一般在 `build/linux/x64/release/bundle/`。
+
+### 重要说明（部署/运行时）
+
+- **BYO-Key 风险**：Key 存在浏览器侧（IndexedDB），并由前端直接调用第三方 API。
+- **CORS**：Web 直连第三方 API 可能被浏览器跨域限制；本项目已支持自定义 `baseUrl`，必要时可配合自建代理。
+- **数据持久化**：Settings / Prompts / Sessions 均保存在本机浏览器 IndexedDB；清理站点数据会导致丢失。
+
 ## 关键交互说明
 
 ### assistant 消息的“复制/重试”
