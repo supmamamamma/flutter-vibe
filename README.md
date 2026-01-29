@@ -8,11 +8,12 @@
 
 - 多 Provider：OpenAI / Gemini / Claude
   - 可分别配置 `baseUrl` / `model` / `apiKey`
-  - 支持“流式/非流式”开关（当前流式为“回放模拟流式”，用于打通 UI 与未来真实流式抽象）
+  - 支持“流式/非流式”开关（已接入真实 streaming：SSE / 增量响应）
 - Chat：
   - 会话管理：新建、切换、重命名、排序、删除
   - 消息渲染：Markdown（支持选择复制）
   - assistant 消息操作：**复制**、**重试（重新生成）**
+  - 文件上传（MVP）：**图片（vision）** + **txt**（txt 按原文拼入上下文）
 - System Prompts：
   - CRUD（新增/编辑/删除）
   - 选择 active prompt，并在发送请求时注入 system message
@@ -182,8 +183,10 @@ flutter build linux --release
 
 ## 已知限制 / 后续规划
 
-- 真实流式输出（SSE/Fetch stream）尚未接入（目前为“回放模拟流式”）
+- Gemini 的流式接口在不同版本/网关上可能不支持（`:streamGenerateContent`）；不支持时会以 Error 形式返回。
+- 纯前端直连第三方 API 的 CORS 限制依然可能出现，必要时需自建代理或使用支持跨域的 baseUrl。
 - 纯前端直连第三方 API 可能受到 CORS 限制，需要配合可用的 baseUrl / 代理方案
+- 多模态目前仅支持：图片 + txt（其它文件类型/音频/视频未做）。
 - 会话搜索、富文本增强（代码块复制/KaTeX/图片查看器等）、单元测试仍在 backlog
 
 ## 版本与变更记录

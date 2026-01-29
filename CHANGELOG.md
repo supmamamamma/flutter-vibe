@@ -21,8 +21,19 @@
   - Gemini generateContent。
   - Claude Messages。
 
+- Chat 交互增强：
+  - assistant 消息支持“复制/重试”。
+  - 移动端会话列表使用 Drawer 侧边栏（左上角菜单打开）。
+
+- 文件上传（MVP，多模态）：
+  - 支持上传图片（png/jpg/jpeg/webp/gif）与 txt。
+  - 图片会作为 Vision 输入发送给 OpenAI/Gemini/Claude（按各家格式组装）。
+  - txt 会按原文拼入上下文。
+
 ### 变更（Changed）
-- 流式输出在 0.1.0 阶段为“回放模拟”：先走非流式拿到完整结果，再逐字渲染以模拟流式体验。
+- 流式输出由“回放模拟”升级为真实 streaming：
+  - OpenAI / Claude：SSE（text/event-stream）。
+  - Web 端通过 XHR onProgress 读取响应增量。
 
 ### 修复（Fixed）
 - 修复 Web 端输入法组合态导致的 TextInput 断言崩溃/输入框卡死问题：将设置页输入从 `TextFormField(initialValue)` 改为 `TextEditingController` 并在失焦/提交时写回。
