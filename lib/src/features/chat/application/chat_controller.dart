@@ -6,6 +6,7 @@ import '../data/chat_sessions_repository.dart';
 import '../domain/chat_models.dart';
 import '../../llm/application/providers.dart';
 import '../../llm/domain/llm_exception.dart';
+import '../../llm/domain/llm_stream_event.dart';
 import '../../prompts/application/system_prompts_controller.dart';
 import '../../settings/application/settings_controller.dart';
 import 'chat_state.dart';
@@ -236,20 +237,14 @@ class ChatController extends Notifier<ChatState> {
         ...history,
       ];
 
-      final result = await llm.generate(messages: requestMessages);
-
       if (settings.useStreaming) {
-        // 目前尚未接入真实 SSE/streaming。
-        // 这里做一个“流式回放”来打通 UI/交互与未来抽象。
-        await _replayAsStream(
+        await _consumeLlmStream(
           sessionId: sessionId,
           assistantId: assistantId,
-          fullText: result.text,
-          latencyMs: result.latencyMs,
-          promptTokens: result.promptTokens,
-          completionTokens: result.completionTokens,
+          stream: llm.generateStream(messages: requestMessages),
         );
       } else {
+        final result = await llm.generate(messages: requestMessages);
         state = state.copyWith(
           isGenerating: false,
           latencyMs: result.latencyMs,
@@ -336,20 +331,14 @@ class ChatController extends Notifier<ChatState> {
         ...history,
       ];
 
-      final result = await llm.generate(messages: requestMessages);
-
       if (settings.useStreaming) {
-        // 目前尚未接入真实 SSE/streaming。
-        // 这里做一个“流式回放”来打通 UI/交互与未来抽象。
-        await _replayAsStream(
+        await _consumeLlmStream(
           sessionId: sessionId,
           assistantId: assistantMessageId,
-          fullText: result.text,
-          latencyMs: result.latencyMs,
-          promptTokens: result.promptTokens,
-          completionTokens: result.completionTokens,
+          stream: llm.generateStream(messages: requestMessages),
         );
       } else {
+        final result = await llm.generate(messages: requestMessages);
         state = state.copyWith(
           isGenerating: false,
           latencyMs: result.latencyMs,
@@ -384,38 +373,50 @@ class ChatController extends Notifier<ChatState> {
     }
   }
 
-  Future<void> _replayAsStream({
+  Future<void> _consumeLlmStream({
     required String sessionId,
     required String assistantId,
-    required String fullText,
-    required int latencyMs,
-    required int? promptTokens,
-    required int? completionTokens,
+    required Stream<LlmStreamEvent> stream,
   }) async {
-    // 先写入统计信息，但保持 generating 状态，随后逐字回放。
-    state = state.copyWith(
-      latencyMs: latencyMs,
-      promptTokens: promptTokens,
-      completionTokens: completionTokens,
-    );
+    try {
+      await for (final event in stream) {
+        if (event is LlmStreamText) {
+          final delta = event.delta;
+          if (delta.isEmpty) continue;
 
-    for (var i = 0; i < fullText.length; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 12));
-      final delta = fullText.substring(i, i + 1);
+          state = state.copyWith(
+            sessions: state.sessions.map((s) {
+              if (s.id != sessionId) return s;
+              final msgs = s.messages.map((m) {
+                if (m.id != assistantId) return m;
+                return m.copyWith(content: m.content + delta);
+              }).toList(growable: false);
+              return s.copyWith(messages: msgs);
+            }).toList(growable: false),
+          );
+        } else if (event is LlmStreamDone) {
+          state = state.copyWith(
+            isGenerating: false,
+            latencyMs: event.latencyMs,
+            promptTokens: event.promptTokens,
+            completionTokens: event.completionTokens,
+            sessions: state.sessions.map((s) {
+              if (s.id != sessionId) return s;
+              return s.copyWith(updatedAt: DateTime.now());
+            }).toList(growable: false),
+          );
+        }
+      }
 
-      state = state.copyWith(
-        sessions: state.sessions.map((s) {
-          if (s.id != sessionId) return s;
-          final msgs = s.messages.map((m) {
-            if (m.id != assistantId) return m;
-            return m.copyWith(content: m.content + delta);
-          }).toList(growable: false);
-          return s.copyWith(messages: msgs, updatedAt: DateTime.now());
-        }).toList(growable: false),
-      );
+      // 如果 provider 没有显式发 done 事件，这里兜底结束 generating。
+      if (state.isGenerating) {
+        state = state.copyWith(isGenerating: false);
+      }
+    } finally {
+      // streaming 过程中不做高频持久化，统一在流结束后落库。
+      _persistSessionById(sessionId);
+      _persistMeta();
     }
-
-    state = state.copyWith(isGenerating: false);
   }
 
   void _setAssistantError({
