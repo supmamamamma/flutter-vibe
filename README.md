@@ -7,7 +7,7 @@
 ## 功能概览
 
 - 多 Provider：OpenAI / Gemini / Claude
-  - 可分别配置 `baseUrl` / `model` / `apiKey`
+  - 通过“连接配置 Profile”管理多套连接：可配置 `provider` / `baseUrl` / `model` / `apiKey`
   - 支持“流式/非流式”开关（已接入真实 streaming：SSE / 增量响应）
 - Chat：
   - 会话管理：新建、切换、重命名、排序、删除
@@ -53,7 +53,8 @@ flutter run -d chrome
 
 启动后：
 
-1. 进入 Settings 页面，选择 Provider，并填写：
+1. 进入 Settings 页面，选择/新建一个“连接配置（Profile）”，并填写：
+   - provider
    - API Key
    - baseUrl（可选，支持自定义）
    - model（可选/必填取决于 Provider）
