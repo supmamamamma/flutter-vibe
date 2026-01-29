@@ -16,6 +16,7 @@ class ChatPage extends ConsumerStatefulWidget {
 }
 
 class _ChatPageState extends ConsumerState<ChatPage> {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _composer = TextEditingController();
   final _composerFocus = FocusNode();
 
@@ -33,9 +34,60 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     final isWide = MediaQuery.sizeOf(context).width >= 768;
 
+    void closeDrawerIfOpen() {
+      final st = _scaffoldKey.currentState;
+      if (st == null) return;
+      if (!st.isDrawerOpen) return;
+      Navigator.of(context).pop();
+    }
+
+    final sessionList = _SessionList(
+      sessions: chat.sessions,
+      activeId: chat.activeSessionId,
+      sortMode: chat.sessionSortMode,
+      onSelect: (id) {
+        controller.setActiveSession(id);
+        closeDrawerIfOpen();
+      },
+      onChangeSortMode: controller.setSessionSortMode,
+      onRename: (s) {
+        closeDrawerIfOpen();
+        _renameSession(context, s);
+      },
+      onDelete: (s) {
+        closeDrawerIfOpen();
+        _deleteSession(context, s);
+      },
+    );
+
+    final chatPanel = _ChatPanel(
+      session: chat.activeSession,
+      isGenerating: chat.isGenerating,
+      latencyMs: chat.latencyMs,
+      promptTokens: chat.promptTokens,
+      completionTokens: chat.completionTokens,
+      composer: _composer,
+      composerFocus: _composerFocus,
+      onSend: () async {
+        final text = _composer.text;
+        _composer.clear();
+        _composerFocus.requestFocus();
+        await controller.sendUserMessage(text);
+      },
+      onRetryAssistantMessage: controller.retryAssistantMessage,
+    );
+
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         title: const Text('AI Chat'),
+        leading: isWide
+            ? null
+            : IconButton(
+                tooltip: '会话',
+                icon: const Icon(Icons.menu),
+                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              ),
         actions: [
           IconButton(
             tooltip: 'New chat',
@@ -54,43 +106,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ),
         ],
       ),
-      body: Row(
-        children: [
-          if (isWide)
-            SizedBox(
-              width: 280,
-              child: _SessionList(
-                sessions: chat.sessions,
-                activeId: chat.activeSessionId,
-                sortMode: chat.sessionSortMode,
-                onSelect: controller.setActiveSession,
-                onChangeSortMode: controller.setSessionSortMode,
-                onRename: (s) => _renameSession(context, s),
-                onDelete: (s) => _deleteSession(context, s),
+      // 移动端：用 Drawer 作为会话侧边栏，避免“会话列表不可见”。
+      drawer: isWide
+          ? null
+          : Drawer(
+              child: SafeArea(
+                child: sessionList,
               ),
-            )
-          else
-            const SizedBox.shrink(),
-          Expanded(
-            child: _ChatPanel(
-              session: chat.activeSession,
-              isGenerating: chat.isGenerating,
-              latencyMs: chat.latencyMs,
-              promptTokens: chat.promptTokens,
-              completionTokens: chat.completionTokens,
-              composer: _composer,
-              composerFocus: _composerFocus,
-              onSend: () async {
-                final text = _composer.text;
-                _composer.clear();
-                _composerFocus.requestFocus();
-                await controller.sendUserMessage(text);
-              },
-              onRetryAssistantMessage: controller.retryAssistantMessage,
             ),
-          ),
-        ],
-      ),
+      body: isWide
+          ? Row(
+              children: [
+                SizedBox(width: 280, child: sessionList),
+                Expanded(child: chatPanel),
+              ],
+            )
+          : chatPanel,
     );
   }
 
