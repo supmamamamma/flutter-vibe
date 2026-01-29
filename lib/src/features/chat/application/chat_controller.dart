@@ -189,12 +189,15 @@ class ChatController extends Notifier<ChatState> {
     return copy;
   }
 
-  Future<void> sendUserMessage(String text) async {
+  Future<void> sendUserMessage(
+    String text, {
+    List<ChatAttachment> attachments = const [],
+  }) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty && attachments.isEmpty) return;
     if (state.isGenerating) return;
 
-    final userMsg = ChatMessage.user(trimmed);
+    final userMsg = ChatMessage.user(trimmed, attachments: attachments);
     final assistantMsg = ChatMessage.assistant('');
     final sessionId = state.activeSessionId;
     final assistantId = assistantMsg.id;

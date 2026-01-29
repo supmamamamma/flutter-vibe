@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sembast/sembast.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../shared/persistence/app_database.dart';
 import '../application/chat_state.dart';
@@ -104,6 +105,18 @@ class ChatSessionsRepository {
       'id': m.id,
       'role': m.role.name,
       'content': m.content,
+      'attachments': [
+        for (final a in m.attachments)
+          {
+            'id': a.id,
+            'kind': a.kind.name,
+            'name': a.name,
+            'mimeType': a.mimeType,
+            'data': a.data,
+            'sizeBytes': a.sizeBytes,
+            'createdAt': a.createdAt.millisecondsSinceEpoch,
+          },
+      ],
       'createdAt': m.createdAt.millisecondsSinceEpoch,
     };
   }
@@ -115,10 +128,42 @@ class ChatSessionsRepository {
         .cast<ChatRole?>()
         .firstWhere((r) => r != null, orElse: () => null);
 
+    final attachmentsRaw = json['attachments'] as List?;
+    final attachments = attachmentsRaw
+            ?.whereType<Map>()
+            .map((a) {
+              final m = a.cast<String, Object?>();
+              final kindName = m['kind'] as String?;
+              final kind = ChatAttachmentKind.values
+                  .where((k) => k.name == kindName)
+                  .cast<ChatAttachmentKind?>()
+                  .firstWhere((k) => k != null, orElse: () => null);
+              final id = (m['id'] as String?) ?? '';
+              if (id.isEmpty) {
+                // 老数据兼容：如果缺 id，直接生成一个。
+                // 这样可以避免丢弃附件。
+                // ignore: prefer_const_constructors
+              }
+              return ChatAttachment(
+                id: id.isEmpty ? const Uuid().v4() : id,
+                kind: kind ?? ChatAttachmentKind.text,
+                name: (m['name'] as String?) ?? 'file',
+                mimeType: (m['mimeType'] as String?) ?? 'application/octet-stream',
+                data: (m['data'] as String?) ?? '',
+                sizeBytes: (m['sizeBytes'] as int?) ?? 0,
+                createdAt: DateTime.fromMillisecondsSinceEpoch(
+                  (m['createdAt'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
+                ),
+              );
+            })
+            .toList(growable: false) ??
+        const <ChatAttachment>[];
+
     return ChatMessage(
       id: json['id']! as String,
       role: role ?? ChatRole.user,
       content: (json['content'] as String?) ?? '',
+      attachments: attachments,
       createdAt: DateTime.fromMillisecondsSinceEpoch(
         (json['createdAt'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
       ),

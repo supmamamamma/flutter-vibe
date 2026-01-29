@@ -3,10 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
 
 import '../application/chat_controller.dart';
 import '../application/chat_state.dart';
 import '../domain/chat_models.dart';
+import '../../../shared/utils/mime.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
@@ -20,11 +23,64 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _composer = TextEditingController();
   final _composerFocus = FocusNode();
 
+  final List<ChatAttachment> _pendingAttachments = <ChatAttachment>[];
+
   @override
   void dispose() {
     _composer.dispose();
     _composerFocus.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickAttachments() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: const [
+        'png',
+        'jpg',
+        'jpeg',
+        'webp',
+        'gif',
+        'txt',
+      ],
+    );
+    if (result == null) return;
+
+    final next = <ChatAttachment>[];
+    for (final f in result.files) {
+      final name = f.name;
+      final bytes = f.bytes;
+      if (bytes == null) continue;
+
+      final mime = guessMimeType(name);
+      if (mime.startsWith('image/')) {
+        next.add(
+          ChatAttachment.image(
+            name: name,
+            mimeType: mime,
+            base64: base64Encode(bytes),
+            sizeBytes: bytes.length,
+          ),
+        );
+      } else {
+        // txt：按原样上传（UTF-8 解码）。
+        final text = utf8.decode(bytes, allowMalformed: true);
+        next.add(
+          ChatAttachment.text(
+            name: name,
+            text: text,
+            sizeBytes: bytes.length,
+          ),
+        );
+      }
+    }
+
+    if (next.isEmpty) return;
+    setState(() {
+      _pendingAttachments.addAll(next);
+    });
   }
 
   @override
@@ -68,11 +124,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       completionTokens: chat.completionTokens,
       composer: _composer,
       composerFocus: _composerFocus,
+      pendingAttachments: _pendingAttachments,
+      onRemovePendingAttachment: (id) {
+        setState(() {
+          _pendingAttachments.removeWhere((a) => a.id == id);
+        });
+      },
+      onPickAttachments: _pickAttachments,
       onSend: () async {
         final text = _composer.text;
         _composer.clear();
         _composerFocus.requestFocus();
-        await controller.sendUserMessage(text);
+
+        final attachments = List<ChatAttachment>.of(_pendingAttachments);
+        setState(_pendingAttachments.clear);
+        await controller.sendUserMessage(text, attachments: attachments);
       },
       onRetryAssistantMessage: controller.retryAssistantMessage,
     );
@@ -303,6 +369,9 @@ class _ChatPanel extends StatelessWidget {
     required this.completionTokens,
     required this.composer,
     required this.composerFocus,
+    required this.pendingAttachments,
+    required this.onRemovePendingAttachment,
+    required this.onPickAttachments,
     required this.onSend,
     required this.onRetryAssistantMessage,
   });
@@ -314,6 +383,9 @@ class _ChatPanel extends StatelessWidget {
   final int? completionTokens;
   final TextEditingController composer;
   final FocusNode composerFocus;
+  final List<ChatAttachment> pendingAttachments;
+  final void Function(String attachmentId) onRemovePendingAttachment;
+  final Future<void> Function() onPickAttachments;
   final VoidCallback onSend;
   final Future<void> Function(String assistantMessageId) onRetryAssistantMessage;
 
@@ -353,6 +425,10 @@ class _ChatPanel extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (m.attachments.isNotEmpty) ...[
+                            _MessageAttachmentsView(attachments: m.attachments),
+                            const SizedBox(height: 8),
+                          ],
                           MarkdownBody(
                             data: m.content.isEmpty
                                 ? (m.role == ChatRole.assistant && isGenerating
@@ -409,6 +485,11 @@ class _ChatPanel extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
+              IconButton(
+                tooltip: '上传文件（图片/txt）',
+                onPressed: isGenerating ? null : onPickAttachments,
+                icon: const Icon(Icons.attach_file),
+              ),
               Expanded(
                 child: TextField(
                   controller: composer,
@@ -431,7 +512,113 @@ class _ChatPanel extends StatelessWidget {
             ],
           ),
         ),
+        if (pendingAttachments.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final a in pendingAttachments)
+                  InputChip(
+                    label: Text(a.name),
+                    onDeleted: () => onRemovePendingAttachment(a.id),
+                  ),
+              ],
+            ),
+          ),
       ],
+    );
+  }
+}
+
+class _MessageAttachmentsView extends StatelessWidget {
+  const _MessageAttachmentsView({required this.attachments});
+
+  final List<ChatAttachment> attachments;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final a in attachments)
+          if (a.isImage)
+            _ImageAttachmentThumb(attachment: a)
+          else
+            _TextAttachmentChip(attachment: a),
+      ],
+    );
+  }
+}
+
+class _TextAttachmentChip extends StatelessWidget {
+  const _TextAttachmentChip({required this.attachment});
+
+  final ChatAttachment attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      avatar: const Icon(Icons.description_outlined, size: 18),
+      label: Text(attachment.name, overflow: TextOverflow.ellipsis),
+      onPressed: () {
+        showDialog<void>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: Text(attachment.name),
+              content: SizedBox(
+                width: 640,
+                child: SingleChildScrollView(
+                  child: SelectableText(attachment.data),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('关闭'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ImageAttachmentThumb extends StatelessWidget {
+  const _ImageAttachmentThumb({required this.attachment});
+
+  final ChatAttachment attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = base64Decode(attachment.data);
+    return InkWell(
+      onTap: () {
+        showDialog<void>(
+          context: context,
+          builder: (context) {
+            return Dialog(
+              child: InteractiveViewer(
+                child: Image.memory(bytes),
+              ),
+            );
+          },
+        );
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.memory(
+          bytes,
+          width: 96,
+          height: 96,
+          fit: BoxFit.cover,
+        ),
+      ),
     );
   }
 }

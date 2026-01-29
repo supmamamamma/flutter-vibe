@@ -50,6 +50,117 @@ class LlmService {
     return messages.where((m) => m.role != ChatRole.system).toList(growable: false);
   }
 
+  Map<String, Object?> _openAiMessage(ChatMessage m) {
+    final role = switch (m.role) {
+      ChatRole.system => 'system',
+      ChatRole.user => 'user',
+      ChatRole.assistant => 'assistant',
+    };
+
+    // 仅 user 消息允许携带附件（MVP）。其它角色保持纯文本。
+    if (m.role != ChatRole.user || m.attachments.isEmpty) {
+      return {
+        'role': role,
+        'content': m.content,
+      };
+    }
+
+    final parts = <Map<String, Object?>>[];
+    if (m.content.trim().isNotEmpty) {
+      parts.add({'type': 'text', 'text': m.content});
+    }
+
+    for (final a in m.attachments) {
+      if (a.isText) {
+        parts.add({
+          'type': 'text',
+          'text': '【文件：${a.name}】\n${a.data}',
+        });
+      } else if (a.isImage) {
+        parts.add({
+          'type': 'image_url',
+          'image_url': {
+            'url': 'data:${a.mimeType};base64,${a.data}',
+          },
+        });
+      }
+    }
+
+    if (parts.isEmpty) {
+      parts.add({'type': 'text', 'text': ''});
+    }
+
+    return {
+      'role': role,
+      'content': parts,
+    };
+  }
+
+  Map<String, Object?> _geminiContent(ChatMessage m) {
+    final role = m.role == ChatRole.user ? 'user' : 'model';
+    final parts = <Map<String, Object?>>[];
+
+    if (m.content.trim().isNotEmpty) {
+      parts.add({'text': m.content});
+    }
+    for (final a in m.attachments) {
+      if (a.isText) {
+        parts.add({'text': '【文件：${a.name}】\n${a.data}'});
+      } else if (a.isImage) {
+        parts.add({
+          'inlineData': {
+            'mimeType': a.mimeType,
+            'data': a.data,
+          },
+        });
+      }
+    }
+    if (parts.isEmpty) {
+      parts.add({'text': ''});
+    }
+
+    return {
+      'role': role,
+      'parts': parts,
+    };
+  }
+
+  Map<String, Object?> _claudeMessage(ChatMessage m) {
+    final role = m.role == ChatRole.user ? 'user' : 'assistant';
+    final content = <Map<String, Object?>>[];
+
+    if (m.content.trim().isNotEmpty) {
+      content.add({'type': 'text', 'text': m.content});
+    }
+
+    for (final a in m.attachments) {
+      if (a.isText) {
+        content.add({
+          'type': 'text',
+          'text': '【文件：${a.name}】\n${a.data}',
+        });
+      } else if (a.isImage) {
+        content.add({
+          'type': 'image',
+          'source': {
+            'type': 'base64',
+            'media_type': a.mimeType,
+            'data': a.data,
+          },
+        });
+      }
+    }
+
+    if (content.isEmpty) {
+      content.add({'type': 'text', 'text': ''});
+    }
+
+    return {
+      'role': role,
+      'content': content,
+    };
+  }
+
   Stream<String> _linesFromChunks(Stream<String> chunks) async* {
     var buffer = '';
     await for (final chunk in chunks) {
@@ -114,15 +225,7 @@ class LlmService {
       'stream': false,
       if (settings.openAiMaxTokens != null) 'max_tokens': settings.openAiMaxTokens,
       'messages': [
-        for (final m in messages)
-          {
-            'role': switch (m.role) {
-              ChatRole.system => 'system',
-              ChatRole.user => 'user',
-              ChatRole.assistant => 'assistant',
-            },
-            'content': m.content,
-          },
+        for (final m in messages) _openAiMessage(m),
       ],
     };
 
@@ -175,15 +278,7 @@ class LlmService {
       },
       if (settings.openAiMaxTokens != null) 'max_tokens': settings.openAiMaxTokens,
       'messages': [
-        for (final m in messages)
-          {
-            'role': switch (m.role) {
-              ChatRole.system => 'system',
-              ChatRole.user => 'user',
-              ChatRole.assistant => 'assistant',
-            },
-            'content': m.content,
-          },
+        for (final m in messages) _openAiMessage(m),
       ],
     };
 
@@ -253,15 +348,7 @@ class LlmService {
     final history = _nonSystemHistory(messages);
 
     // Gemini expects roles: user / model
-    final contents = [
-      for (final m in history)
-        {
-          'role': m.role == ChatRole.user ? 'user' : 'model',
-          'parts': [
-            {'text': m.content},
-          ],
-        },
-    ];
+    final contents = [for (final m in history) _geminiContent(m)];
 
     final uri = Uri.parse(
       '${settings.geminiBaseUrl}/v1beta/models/${settings.geminiModel}:generateContent',
@@ -319,15 +406,7 @@ class LlmService {
     final system = _systemFromHistory(messages);
     final history = _nonSystemHistory(messages);
 
-    final contents = [
-      for (final m in history)
-        {
-          'role': m.role == ChatRole.user ? 'user' : 'model',
-          'parts': [
-            {'text': m.content},
-          ],
-        },
-    ];
+    final contents = [for (final m in history) _geminiContent(m)];
 
     // Gemini REST Streaming: :streamGenerateContent
     final uri = Uri.parse(
@@ -422,18 +501,7 @@ class LlmService {
       'model': settings.claudeModel,
       'max_tokens': settings.claudeMaxTokens,
       if (system.isNotEmpty) 'system': system,
-      'messages': [
-        for (final m in history)
-          {
-            'role': m.role == ChatRole.user ? 'user' : 'assistant',
-            'content': [
-              {
-                'type': 'text',
-                'text': m.content,
-              }
-            ],
-          },
-      ],
+      'messages': [for (final m in history) _claudeMessage(m)],
     };
 
     final resp = await httpClient.post(
@@ -486,18 +554,7 @@ class LlmService {
       'max_tokens': settings.claudeMaxTokens,
       'stream': true,
       if (system.isNotEmpty) 'system': system,
-      'messages': [
-        for (final m in history)
-          {
-            'role': m.role == ChatRole.user ? 'user' : 'assistant',
-            'content': [
-              {
-                'type': 'text',
-                'text': m.content,
-              }
-            ],
-          },
-      ],
+      'messages': [for (final m in history) _claudeMessage(m)],
     };
 
     final chunks = postTextStream(
