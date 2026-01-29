@@ -188,4 +188,4 @@ flutter build linux --release
 
 ## 版本与变更记录
 
-详见 [`CHANGELOG.md`](CHANGELOG.md:1)
+详见 [`CHANGELOG.md`](CHANGELOG.md)
