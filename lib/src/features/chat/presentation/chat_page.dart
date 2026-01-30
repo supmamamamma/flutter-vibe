@@ -42,6 +42,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         'jpg',
         'jpeg',
         'webp',
+        'avif',
         'gif',
         'txt',
       ],
@@ -81,6 +82,230 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     setState(() {
       _pendingAttachments.addAll(next);
     });
+  }
+
+  Future<List<ChatAttachment>?> _pickAttachmentsForEdit({
+    required List<ChatAttachment> initial,
+  }) async {
+    // 编辑附件：不改现有附件对象本身（避免修改历史附件 id/createdAt），
+    // 采用“删除 + 新增（新 id）”策略。
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: const [
+        'png',
+        'jpg',
+        'jpeg',
+        'webp',
+        'gif',
+        'txt',
+      ],
+    );
+    if (picked == null) return null;
+
+    final next = <ChatAttachment>[...initial];
+    for (final f in picked.files) {
+      final name = f.name;
+      final bytes = f.bytes;
+      if (bytes == null) continue;
+
+      final mime = guessMimeType(name);
+      if (mime.startsWith('image/')) {
+        next.add(
+          ChatAttachment.image(
+            name: name,
+            mimeType: mime,
+            base64: base64Encode(bytes),
+            sizeBytes: bytes.length,
+          ),
+        );
+      } else {
+        final text = utf8.decode(bytes, allowMalformed: true);
+        next.add(
+          ChatAttachment.text(
+            name: name,
+            text: text,
+            sizeBytes: bytes.length,
+          ),
+        );
+      }
+    }
+    return next;
+  }
+
+  Future<void> _editMessageDialog(
+    BuildContext context, {
+    required ChatMessage message,
+    required bool isGenerating,
+  }) async {
+    if (isGenerating) return;
+
+    final controller = ref.read(chatControllerProvider.notifier);
+    final textController = TextEditingController(text: message.content);
+    var attachments = List<ChatAttachment>.of(message.attachments);
+
+    Future<void> open({required bool truncateAfter}) async {
+      final result = await showDialog<({String text, List<ChatAttachment> atts})>(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: Text(message.role == ChatRole.user ? '编辑用户消息' : '编辑助手消息'),
+                content: SizedBox(
+                  width: 640,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: textController,
+                        minLines: 3,
+                        maxLines: 10,
+                        decoration: const InputDecoration(
+                          labelText: '内容',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (message.role == ChatRole.user) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '附件',
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (attachments.isNotEmpty)
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final a in attachments)
+                                InputChip(
+                                  label: Text(a.name, overflow: TextOverflow.ellipsis),
+                                  onDeleted: () {
+                                    setState(() {
+                                      attachments = attachments
+                                          .where((x) => x.id != a.id)
+                                          .toList(growable: false);
+                                    });
+                                  },
+                                ),
+                            ],
+                          )
+                        else
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('无附件'),
+                          ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              onPressed: () async {
+                                final next = await _pickAttachmentsForEdit(
+                                  initial: attachments,
+                                );
+                                if (next == null) return;
+                                setState(() {
+                                  attachments = next;
+                                });
+                              },
+                              icon: const Icon(Icons.attach_file),
+                              label: const Text('添加/替换附件'),
+                            ),
+                            const Spacer(),
+                            if (attachments.isNotEmpty)
+                              TextButton(
+                                onPressed: () {
+                                  setState(() {
+                                    attachments = const [];
+                                  });
+                                },
+                                child: const Text('清空附件'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('取消'),
+                  ),
+                  if (truncateAfter)
+                    FilledButton.tonal(
+                      onPressed: () {
+                        Navigator.of(context).pop((
+                          text: textController.text,
+                          atts: attachments,
+                        ));
+                      },
+                      child: const Text('保存并截断后续'),
+                    )
+                  else
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.of(context).pop((
+                          text: textController.text,
+                          atts: attachments,
+                        ));
+                      },
+                      child: const Text('保存'),
+                    ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (result == null) return;
+
+      controller.editMessage(
+        messageId: message.id,
+        content: result.text,
+        attachments: message.role == ChatRole.user ? result.atts : null,
+        truncateAfter: truncateAfter,
+      );
+    }
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('编辑消息'),
+          content: const Text('选择保存方式'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop('editOnly'),
+              child: const Text('仅修改文本'),
+            ),
+            FilledButton.tonal(
+              onPressed: () => Navigator.of(context).pop('editAndTruncate'),
+              child: const Text('修改并截断后续'),
+            ),
+          ],
+        );
+      },
+    );
+
+    switch (action) {
+      case 'editOnly':
+        await open(truncateAfter: false);
+        break;
+      case 'editAndTruncate':
+        await open(truncateAfter: true);
+        break;
+    }
   }
 
   @override
@@ -141,6 +366,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         await controller.sendUserMessage(text, attachments: attachments);
       },
       onRetryAssistantMessage: controller.retryAssistantMessage,
+      onEditMessage: (m) => _editMessageDialog(
+        context,
+        message: m,
+        isGenerating: chat.isGenerating,
+      ),
     );
 
     return Scaffold(
@@ -374,6 +604,7 @@ class _ChatPanel extends StatelessWidget {
     required this.onPickAttachments,
     required this.onSend,
     required this.onRetryAssistantMessage,
+    required this.onEditMessage,
   });
 
   final ChatSession session;
@@ -388,6 +619,7 @@ class _ChatPanel extends StatelessWidget {
   final Future<void> Function() onPickAttachments;
   final VoidCallback onSend;
   final Future<void> Function(String assistantMessageId) onRetryAssistantMessage;
+  final Future<void> Function(ChatMessage message) onEditMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -437,12 +669,19 @@ class _ChatPanel extends StatelessWidget {
                                 : m.content,
                             selectable: true,
                           ),
-                          if (isAssistant) ...[
+                          if (isAssistant || isUser) ...[
                             const SizedBox(height: 8),
                             Wrap(
                               spacing: 8,
                               runSpacing: 4,
                               children: [
+                                TextButton.icon(
+                                  onPressed: isGenerating
+                                      ? null
+                                      : () => onEditMessage(m),
+                                  icon: const Icon(Icons.edit_outlined),
+                                  label: const Text('编辑'),
+                                ),
                                 TextButton.icon(
                                   onPressed: (m.content.trim().isEmpty)
                                       ? null
@@ -461,13 +700,14 @@ class _ChatPanel extends StatelessWidget {
                                   icon: const Icon(Icons.copy_outlined),
                                   label: const Text('复制'),
                                 ),
-                                TextButton.icon(
-                                  onPressed: isGenerating
-                                      ? null
-                                      : () => onRetryAssistantMessage(m.id),
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('重试'),
-                                ),
+                                if (isAssistant)
+                                  TextButton.icon(
+                                    onPressed: isGenerating
+                                        ? null
+                                        : () => onRetryAssistantMessage(m.id),
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('重试'),
+                                  ),
                               ],
                             ),
                           ],
