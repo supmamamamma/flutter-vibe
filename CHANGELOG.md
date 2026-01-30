@@ -9,6 +9,10 @@
   - 支持两种保存方式：仅修改 / 修改并截断后续消息（用于调整上下文）
   - user 消息支持附件编辑（删除/清空/重新选择）
   - 实现见：[`_ChatPanel.build()`](lib/src/features/chat/presentation/chat_page.dart:392)、[`ChatController.editMessage()`](lib/src/features/chat/application/chat_controller.dart:22)
+- Settings：为 OpenAI / Gemini / Claude 增加可选生成参数（未填写则不传）
+  - OpenAI：`temperature` / `top_p` / `top_k` / `max_tokens`
+  - Gemini：`generationConfig.temperature` / `topP` / `topK` / `maxOutputTokens`
+  - Claude：`temperature` / `top_p` / `top_k` / `max_tokens`
 
 ### 修复（Fixed）
 - Gemini 流式回复：修复“请求成功但 UI 无增量输出”的解析问题
@@ -17,9 +21,11 @@
   - 实现见：[`_geminiStreamGenerateContent()`](lib/src/features/llm/application/llm_service.dart:400)
 
 ### 变更（Changed）
+- OpenAI baseUrl 处理调整：不再自动附加 `/v1`，仅追加 `/chat/completions`；`/v1` 等前缀由用户在 baseUrl 中自行填写（Settings 中已增加提示）
 - 跨平台 streaming POST：IO 端改为使用 `dart:io` 的 `HttpClient` 进行真正的响应流读取（避免缓冲完整响应），并与 Web 端 XHR 增量保持一致的 [`Stream<String>`](lib/src/shared/http/streaming_post.dart:12) API
   - 条件导入入口：[`postTextStream()`](lib/src/shared/http/streaming_post.dart:12)
   - IO 实现：[`postTextStreamImpl()`](lib/src/shared/http/streaming_post_io.dart:22)
+- Settings 持久化结构升级（schemaVersion: 2 -> 3）：将各 Provider 的生成参数随 Profile 一并持久化
 
 ## [0.2.0] - 2026-01-29
 
