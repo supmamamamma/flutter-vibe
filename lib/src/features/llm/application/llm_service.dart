@@ -413,9 +413,15 @@ class LlmService {
     final contents = [for (final m in history) _geminiContent(m)];
 
     // Gemini REST Streaming: :streamGenerateContent
+    //
+    // 关键点：默认返回可能是 JSON 数组/多行格式（Web 端按行解析会拿不到 chunk）。
+    // 这里显式请求 SSE（alt=sse），可稳定获得 `data: {json}` 的逐条事件。
     final uri = Uri.parse(
       '${p.baseUrl}/v1beta/models/${p.model}:streamGenerateContent',
-    ).replace(queryParameters: {'key': key});
+    ).replace(queryParameters: {
+      'key': key,
+      'alt': 'sse',
+    });
 
     final body = {
       if (system.isNotEmpty)
@@ -432,6 +438,7 @@ class LlmService {
       uri: uri,
       headers: const {
         'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
       },
       body: jsonEncode(body),
     );
@@ -460,25 +467,44 @@ class LlmService {
       } catch (_) {
         continue;
       }
-      if (obj is! Map<String, dynamic>) continue;
 
-      final candidates = (obj['candidates'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-      final content = candidates.isEmpty ? null : candidates.first['content'] as Map<String, dynamic>?;
-      final parts = (content?['parts'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-      final chunkText = parts.isEmpty ? '' : (parts.first['text'] as String?) ?? '';
-      if (chunkText.isNotEmpty) {
-        // 有的实现返回“累积文本”，有的返回“增量文本”。这里用前缀差分做兼容。
-        final next = chunkText;
-        final delta = next.startsWith(acc) ? next.substring(acc.length) : next;
-        acc = next;
-        if (delta.isNotEmpty) {
-          yield LlmStreamText(delta);
+      // Gemini streaming 在某些形态下可能返回 JSON 数组（一次性 batch），这里做兼容。
+      final items = switch (obj) {
+        Map<String, dynamic>() => <Map<String, dynamic>>[obj],
+        List() => obj
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList(growable: false),
+        _ => const <Map<String, dynamic>>[],
+      };
+
+      for (final item in items) {
+        final candidates =
+            (item['candidates'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+        final content =
+            candidates.isEmpty ? null : candidates.first['content'] as Map<String, dynamic>?;
+        final parts = (content?['parts'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+
+        // parts 可能包含多个 text 段，拼接起来。
+        final chunkText = parts
+            .map((p) => p['text'])
+            .whereType<String>()
+            .join();
+
+        if (chunkText.isNotEmpty) {
+          // 有的实现返回“累积文本”，有的返回“增量文本”。这里用前缀差分做兼容。
+          final next = chunkText;
+          final delta = next.startsWith(acc) ? next.substring(acc.length) : next;
+          acc = next;
+          if (delta.isNotEmpty) {
+            yield LlmStreamText(delta);
+          }
         }
-      }
 
-      final usage = obj['usageMetadata'] as Map<String, dynamic>?;
-      promptTokens ??= usage?['promptTokenCount'] as int?;
-      completionTokens ??= usage?['candidatesTokenCount'] as int?;
+        final usage = item['usageMetadata'] as Map<String, dynamic>?;
+        promptTokens ??= usage?['promptTokenCount'] as int?;
+        completionTokens ??= usage?['candidatesTokenCount'] as int?;
+      }
     }
 
     yield LlmStreamDone(
