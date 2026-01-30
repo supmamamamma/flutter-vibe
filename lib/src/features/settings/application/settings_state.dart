@@ -15,9 +15,7 @@ class SettingsState {
       profiles.firstWhere((p) => p.id == activeProfileId);
 
   LlmProvider get activeProvider => activeProfile.provider;
-  /// 是否启用流式输出。
-  ///
-  /// 目前 UI/状态已支持；实际 streaming 实现将在后续里程碑接入。
+
   final bool useStreaming;
 
   SettingsState copyWith({
