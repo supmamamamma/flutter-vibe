@@ -12,7 +12,8 @@
 - Chat：
   - 会话管理：新建、切换、重命名、排序、删除
   - 消息渲染：Markdown（支持选择复制）
-  - assistant 消息操作：**复制**、**重试（重新生成）**
+  - user / assistant 消息操作：**编辑**（可选截断后续消息以调整上下文）、**复制**
+  - assistant 消息额外操作：**重试（重新生成）**
   - 文件上传（MVP）：**图片（vision）** + **txt**（txt 按原文拼入上下文）
 - System Prompts：
   - CRUD（新增/编辑/删除）
@@ -28,6 +29,15 @@
 - Markdown：flutter_markdown
 - 持久化：sembast + sembast_web（IndexedDB）
 - 网络：http
+
+## 近期更新（0.2.1）
+
+- Chat：支持对 user / assistant 历史消息进行编辑
+  - 支持两种保存方式：仅修改 / 修改并截断后续消息（用于调整上下文）
+  - user 消息支持附件编辑（删除/清空/重新选择）
+  - 生成中会禁用编辑
+- Gemini：修复流式解析导致“请求成功但无增量输出”的问题（强制 SSE + 兼容 batch JSON）
+- 跨平台：IO 端 streaming POST 改为使用 `dart:io` 的 `HttpClient` 真流式读取，统一对外 API 为 [`Stream<String>`](lib/src/shared/http/streaming_post.dart:12)
 
 ## 目录结构（简述）
 
@@ -171,6 +181,19 @@ flutter build linux --release
 
 - UI：[`lib/src/features/chat/presentation/chat_page.dart`](lib/src/features/chat/presentation/chat_page.dart:1)
 - Controller：[`retryAssistantMessage()`](lib/src/features/chat/application/chat_controller.dart:1)
+
+### 消息编辑（user / assistant）
+
+- 编辑：可对历史消息内容进行修改。
+- 保存方式：
+  - 仅修改该条消息（允许出现上下文不一致，下次继续对话将使用新历史）。
+  - 修改并截断后续消息（用于从该点重建上下文）。
+- user 消息支持附件编辑（删除/清空/重新选择）；assistant 仅支持编辑文本。
+
+相关实现：
+
+- UI：[`_ChatPanel.build()`](lib/src/features/chat/presentation/chat_page.dart:392)
+- Controller：[`ChatController.editMessage()`](lib/src/features/chat/application/chat_controller.dart:22)
 
 ## 持久化说明
 

@@ -2,6 +2,25 @@
 
 本项目遵循「Keep a Changelog」的格式约定。
 
+## [0.2.1] - 2026-01-30
+
+### 新增（Added）
+- Chat：user / assistant 消息支持“编辑”
+  - 支持两种保存方式：仅修改 / 修改并截断后续消息（用于调整上下文）
+  - user 消息支持附件编辑（删除/清空/重新选择）
+  - 实现见：[`_ChatPanel.build()`](lib/src/features/chat/presentation/chat_page.dart:392)、[`ChatController.editMessage()`](lib/src/features/chat/application/chat_controller.dart:22)
+
+### 修复（Fixed）
+- Gemini 流式回复：修复“请求成功但 UI 无增量输出”的解析问题
+  - 强制请求 SSE（`alt=sse` + `Accept: text/event-stream`）
+  - 解析兼容 JSON 数组 batch 形态
+  - 实现见：[`_geminiStreamGenerateContent()`](lib/src/features/llm/application/llm_service.dart:400)
+
+### 变更（Changed）
+- 跨平台 streaming POST：IO 端改为使用 `dart:io` 的 `HttpClient` 进行真正的响应流读取（避免缓冲完整响应），并与 Web 端 XHR 增量保持一致的 [`Stream<String>`](lib/src/shared/http/streaming_post.dart:12) API
+  - 条件导入入口：[`postTextStream()`](lib/src/shared/http/streaming_post.dart:12)
+  - IO 实现：[`postTextStreamImpl()`](lib/src/shared/http/streaming_post_io.dart:22)
+
 ## [0.2.0] - 2026-01-29
 
 ### 新增（Added）
