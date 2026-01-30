@@ -402,7 +402,7 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
           focusNode: _baseUrlFocus,
           decoration: const InputDecoration(
             labelText: 'OpenAI base_url',
-            helperText: 'Default: https://api.openai.com',
+            helperText: '示例：https://api.openai.com 或 https://api.openai.com/v1（若无法连接可尝试补 /v1）',
             border: OutlineInputBorder(),
           ),
           onSubmitted: (_) => _commitIfNeeded(),

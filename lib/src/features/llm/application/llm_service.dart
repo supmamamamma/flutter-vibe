@@ -10,6 +10,15 @@ import '../domain/llm_exception.dart';
 import '../domain/llm_result.dart';
 import '../domain/llm_stream_event.dart';
 
+Uri _appendPath(String baseUrl, String path) {
+  final base = Uri.parse(baseUrl.trim());
+  final basePath = base.path.endsWith('/')
+      ? base.path.substring(0, base.path.length - 1)
+      : base.path;
+  final suffix = path.startsWith('/') ? path : '/$path';
+  return base.replace(path: '$basePath$suffix');
+}
+
 class LlmService {
   LlmService({required this.httpClient, required this.settings});
 
@@ -220,7 +229,8 @@ class LlmService {
       throw const LlmException('OpenAI API Key 为空，请先在 Settings 填写。');
     }
 
-    final uri = Uri.parse('${p.baseUrl}/v1/chat/completions');
+    // baseUrl 由用户自行决定是否包含 /v1 等前缀；这里仅追加 endpoint path。
+    final uri = _appendPath(p.baseUrl, '/chat/completions');
     final body = {
       'model': p.model,
       'stream': false,
@@ -270,7 +280,8 @@ class LlmService {
       throw const LlmException('OpenAI API Key 为空，请先在 Settings 填写。');
     }
 
-    final uri = Uri.parse('${p.baseUrl}/v1/chat/completions');
+    // baseUrl 由用户自行决定是否包含 /v1 等前缀；这里仅追加 endpoint path。
+    final uri = _appendPath(p.baseUrl, '/chat/completions');
     final body = {
       'model': p.model,
       'stream': true,
