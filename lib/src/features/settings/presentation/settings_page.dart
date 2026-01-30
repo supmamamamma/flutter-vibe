@@ -144,7 +144,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               children: [
                 const Text(
-                  'BYO-Key 模式：密钥仅保存在本地浏览器（后续将落地到 IndexedDB）。',
+                  '密钥仅保存在本地浏览器',
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -215,7 +215,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   value: settings.useStreaming,
                   onChanged: controller.setUseStreaming,
                   title: const Text('Stream responses'),
-                  subtitle: const Text('开：流式（先用“回放”模拟）/ 关：非流式'),
+                  subtitle: const Text('开：流式/ 关：非流式'),
                 ),
                 const SizedBox(height: 8),
                 FilledButton.tonalIcon(
