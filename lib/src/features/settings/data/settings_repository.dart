@@ -43,11 +43,26 @@ class SettingsRepository {
             'baseUrl': p.baseUrl,
             'apiKey': p.apiKey,
             'model': p.model,
-            'claudeMaxTokens': p.claudeMaxTokens,
+            // OpenAI params
+            'openAiTemperature': p.openAiTemperature,
+            'openAiTopP': p.openAiTopP,
+            'openAiTopK': p.openAiTopK,
             'openAiMaxTokens': p.openAiMaxTokens,
+
+            // Gemini params
+            'geminiTemperature': p.geminiTemperature,
+            'geminiTopP': p.geminiTopP,
+            'geminiTopK': p.geminiTopK,
+            'geminiMaxOutputTokens': p.geminiMaxOutputTokens,
+
+            // Claude params
+            'claudeTemperature': p.claudeTemperature,
+            'claudeTopP': p.claudeTopP,
+            'claudeTopK': p.claudeTopK,
+            'claudeMaxTokens': p.claudeMaxTokens,
           },
       ],
-      'schemaVersion': 2,
+      'schemaVersion': 3,
     };
   }
 
@@ -120,8 +135,23 @@ class SettingsRepository {
                 baseUrl: (p['baseUrl'] as String?) ?? 'https://api.openai.com',
                 apiKey: (p['apiKey'] as String?) ?? '',
                 model: (p['model'] as String?) ?? 'gpt-4o-mini',
-                claudeMaxTokens: (p['claudeMaxTokens'] as int?) ?? 1024,
+                openAiTemperature:
+                    (p['openAiTemperature'] as num?)?.toDouble(),
+                openAiTopP: (p['openAiTopP'] as num?)?.toDouble(),
+                openAiTopK: p['openAiTopK'] as int?,
                 openAiMaxTokens: p['openAiMaxTokens'] as int?,
+
+                geminiTemperature:
+                    (p['geminiTemperature'] as num?)?.toDouble(),
+                geminiTopP: (p['geminiTopP'] as num?)?.toDouble(),
+                geminiTopK: p['geminiTopK'] as int?,
+                geminiMaxOutputTokens: p['geminiMaxOutputTokens'] as int?,
+
+                claudeTemperature:
+                    (p['claudeTemperature'] as num?)?.toDouble(),
+                claudeTopP: (p['claudeTopP'] as num?)?.toDouble(),
+                claudeTopK: p['claudeTopK'] as int?,
+                claudeMaxTokens: (p['claudeMaxTokens'] as int?) ?? 1024,
               );
             })
             .where((p) => p.id.isNotEmpty)

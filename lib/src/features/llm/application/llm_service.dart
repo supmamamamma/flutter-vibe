@@ -234,6 +234,9 @@ class LlmService {
     final body = {
       'model': p.model,
       'stream': false,
+      if (p.openAiTemperature != null) 'temperature': p.openAiTemperature,
+      if (p.openAiTopP != null) 'top_p': p.openAiTopP,
+      if (p.openAiTopK != null) 'top_k': p.openAiTopK,
       if (p.openAiMaxTokens != null) 'max_tokens': p.openAiMaxTokens,
       'messages': [
         for (final m in messages) _openAiMessage(m),
@@ -285,6 +288,9 @@ class LlmService {
     final body = {
       'model': p.model,
       'stream': true,
+      if (p.openAiTemperature != null) 'temperature': p.openAiTemperature,
+      if (p.openAiTopP != null) 'top_p': p.openAiTopP,
+      if (p.openAiTopK != null) 'top_k': p.openAiTopK,
       // OpenAI 兼容接口：请求在流的最后一个 chunk 中包含 usage。
       'stream_options': {
         'include_usage': true,
@@ -368,6 +374,14 @@ class LlmService {
       '${p.baseUrl}/v1beta/models/${p.model}:generateContent',
     ).replace(queryParameters: {'key': key});
 
+    final generationConfig = <String, Object?>{
+      if (p.geminiTemperature != null) 'temperature': p.geminiTemperature,
+      if (p.geminiTopP != null) 'topP': p.geminiTopP,
+      if (p.geminiTopK != null) 'topK': p.geminiTopK,
+      if (p.geminiMaxOutputTokens != null)
+        'maxOutputTokens': p.geminiMaxOutputTokens,
+    };
+
     final body = {
       if (system.isNotEmpty)
         'systemInstruction': {
@@ -376,6 +390,7 @@ class LlmService {
           ],
         },
       'contents': contents,
+      if (generationConfig.isNotEmpty) 'generationConfig': generationConfig,
     };
 
     final resp = await httpClient.post(
@@ -434,6 +449,14 @@ class LlmService {
       'alt': 'sse',
     });
 
+    final generationConfig = <String, Object?>{
+      if (p.geminiTemperature != null) 'temperature': p.geminiTemperature,
+      if (p.geminiTopP != null) 'topP': p.geminiTopP,
+      if (p.geminiTopK != null) 'topK': p.geminiTopK,
+      if (p.geminiMaxOutputTokens != null)
+        'maxOutputTokens': p.geminiMaxOutputTokens,
+    };
+
     final body = {
       if (system.isNotEmpty)
         'systemInstruction': {
@@ -442,6 +465,7 @@ class LlmService {
           ],
         },
       'contents': contents,
+      if (generationConfig.isNotEmpty) 'generationConfig': generationConfig,
     };
 
     final chunks = postTextStream(
@@ -542,6 +566,9 @@ class LlmService {
     final body = {
       'model': p.model,
       'max_tokens': p.claudeMaxTokens,
+      if (p.claudeTemperature != null) 'temperature': p.claudeTemperature,
+      if (p.claudeTopP != null) 'top_p': p.claudeTopP,
+      if (p.claudeTopK != null) 'top_k': p.claudeTopK,
       if (system.isNotEmpty) 'system': system,
       'messages': [for (final m in history) _claudeMessage(m)],
     };
@@ -595,6 +622,9 @@ class LlmService {
     final body = {
       'model': p.model,
       'max_tokens': p.claudeMaxTokens,
+      if (p.claudeTemperature != null) 'temperature': p.claudeTemperature,
+      if (p.claudeTopP != null) 'top_p': p.claudeTopP,
+      if (p.claudeTopK != null) 'top_k': p.claudeTopK,
       'stream': true,
       if (system.isNotEmpty) 'system': system,
       'messages': [for (final m in history) _claudeMessage(m)],

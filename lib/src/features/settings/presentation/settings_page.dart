@@ -304,26 +304,39 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
   late final TextEditingController _apiKey;
+  late final TextEditingController _temperature;
+  late final TextEditingController _topP;
+  late final TextEditingController _topK;
   late final TextEditingController _maxTokens;
 
   final FocusNode _baseUrlFocus = FocusNode();
   final FocusNode _modelFocus = FocusNode();
   final FocusNode _apiKeyFocus = FocusNode();
+  final FocusNode _temperatureFocus = FocusNode();
+  final FocusNode _topPFocus = FocusNode();
+  final FocusNode _topKFocus = FocusNode();
   final FocusNode _maxTokensFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    _baseUrl = TextEditingController(text: widget.settings.activeProfile.baseUrl);
-    _model = TextEditingController(text: widget.settings.activeProfile.model);
-    _apiKey = TextEditingController(text: widget.settings.activeProfile.apiKey);
+    final p = widget.settings.activeProfile;
+    _baseUrl = TextEditingController(text: p.baseUrl);
+    _model = TextEditingController(text: p.model);
+    _apiKey = TextEditingController(text: p.apiKey);
+    _temperature = TextEditingController(text: p.openAiTemperature?.toString() ?? '');
+    _topP = TextEditingController(text: p.openAiTopP?.toString() ?? '');
+    _topK = TextEditingController(text: p.openAiTopK?.toString() ?? '');
     _maxTokens = TextEditingController(
-      text: widget.settings.activeProfile.openAiMaxTokens?.toString() ?? '',
+      text: p.openAiMaxTokens?.toString() ?? '',
     );
 
     _baseUrlFocus.addListener(_commitIfNeeded);
     _modelFocus.addListener(_commitIfNeeded);
     _apiKeyFocus.addListener(_commitIfNeeded);
+    _temperatureFocus.addListener(_commitIfNeeded);
+    _topPFocus.addListener(_commitIfNeeded);
+    _topKFocus.addListener(_commitIfNeeded);
     _maxTokensFocus.addListener(_commitIfNeeded);
   }
 
@@ -341,6 +354,21 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
       _apiKey.text = p.apiKey;
     }
 
+    final temperatureText = p.openAiTemperature?.toString() ?? '';
+    if (!_temperatureFocus.hasFocus && _temperature.text != temperatureText) {
+      _temperature.text = temperatureText;
+    }
+
+    final topPText = p.openAiTopP?.toString() ?? '';
+    if (!_topPFocus.hasFocus && _topP.text != topPText) {
+      _topP.text = topPText;
+    }
+
+    final topKText = p.openAiTopK?.toString() ?? '';
+    if (!_topKFocus.hasFocus && _topK.text != topKText) {
+      _topK.text = topKText;
+    }
+
     final maxTokensText = p.openAiMaxTokens?.toString() ?? '';
     if (!_maxTokensFocus.hasFocus && _maxTokens.text != maxTokensText) {
       _maxTokens.text = maxTokensText;
@@ -352,6 +380,9 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
     if (_baseUrlFocus.hasFocus ||
         _modelFocus.hasFocus ||
         _apiKeyFocus.hasFocus ||
+        _temperatureFocus.hasFocus ||
+        _topPFocus.hasFocus ||
+        _topKFocus.hasFocus ||
         _maxTokensFocus.hasFocus) {
       return;
     }
@@ -367,6 +398,21 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
       widget.controller.setProfileApiKey(_apiKey.text);
     }
 
+    final temperatureText = p.openAiTemperature?.toString() ?? '';
+    if (_temperature.text.trim() != temperatureText) {
+      widget.controller.setProfileOpenAiTemperature(_temperature.text);
+    }
+
+    final topPText = p.openAiTopP?.toString() ?? '';
+    if (_topP.text.trim() != topPText) {
+      widget.controller.setProfileOpenAiTopP(_topP.text);
+    }
+
+    final topKText = p.openAiTopK?.toString() ?? '';
+    if (_topK.text.trim() != topKText) {
+      widget.controller.setProfileOpenAiTopK(_topK.text);
+    }
+
     final maxTokensText = p.openAiMaxTokens?.toString() ?? '';
     if (_maxTokens.text.trim() != maxTokensText) {
       widget.controller.setProfileOpenAiMaxTokens(_maxTokens.text);
@@ -378,14 +424,23 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
     _baseUrlFocus.removeListener(_commitIfNeeded);
     _modelFocus.removeListener(_commitIfNeeded);
     _apiKeyFocus.removeListener(_commitIfNeeded);
+    _temperatureFocus.removeListener(_commitIfNeeded);
+    _topPFocus.removeListener(_commitIfNeeded);
+    _topKFocus.removeListener(_commitIfNeeded);
     _maxTokensFocus.removeListener(_commitIfNeeded);
     _baseUrlFocus.dispose();
     _modelFocus.dispose();
     _apiKeyFocus.dispose();
+    _temperatureFocus.dispose();
+    _topPFocus.dispose();
+    _topKFocus.dispose();
     _maxTokensFocus.dispose();
     _baseUrl.dispose();
     _model.dispose();
     _apiKey.dispose();
+    _temperature.dispose();
+    _topP.dispose();
+    _topK.dispose();
     _maxTokens.dispose();
     super.dispose();
   }
@@ -434,8 +489,44 @@ class _OpenAiSettingsTabBodyState extends State<_OpenAiSettingsTabBody> {
           onSubmitted: (_) => _commitIfNeeded(),
         ),
         const SizedBox(height: 16),
-        const Text('Limits', style: TextStyle(fontWeight: FontWeight.w600)),
+        const Text('Generation', style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
+        TextField(
+          controller: _temperature,
+          focusNode: _temperatureFocus,
+          decoration: const InputDecoration(
+            labelText: 'temperature（可选，留空表示不传）',
+            helperText: '示例：0.2 / 0.7 / 1.0（不同后端取值范围可能不同）',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _topP,
+          focusNode: _topPFocus,
+          decoration: const InputDecoration(
+            labelText: 'top_p（可选，留空表示不传）',
+            helperText: '示例：0.9（一般为 0~1）',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _topK,
+          focusNode: _topKFocus,
+          decoration: const InputDecoration(
+            labelText: 'top_k（可选，留空表示不传）',
+            helperText: '部分 OpenAI 兼容后端支持 top_k',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+        const SizedBox(height: 12),
         TextField(
           controller: _maxTokens,
           focusNode: _maxTokensFocus,
@@ -465,21 +556,40 @@ class _GeminiSettingsTabBodyState extends State<_GeminiSettingsTabBody> {
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
   late final TextEditingController _apiKey;
+  late final TextEditingController _temperature;
+  late final TextEditingController _topP;
+  late final TextEditingController _topK;
+  late final TextEditingController _maxOutputTokens;
 
   final FocusNode _baseUrlFocus = FocusNode();
   final FocusNode _modelFocus = FocusNode();
   final FocusNode _apiKeyFocus = FocusNode();
+  final FocusNode _temperatureFocus = FocusNode();
+  final FocusNode _topPFocus = FocusNode();
+  final FocusNode _topKFocus = FocusNode();
+  final FocusNode _maxOutputTokensFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    _baseUrl = TextEditingController(text: widget.settings.activeProfile.baseUrl);
-    _model = TextEditingController(text: widget.settings.activeProfile.model);
-    _apiKey = TextEditingController(text: widget.settings.activeProfile.apiKey);
+    final p = widget.settings.activeProfile;
+    _baseUrl = TextEditingController(text: p.baseUrl);
+    _model = TextEditingController(text: p.model);
+    _apiKey = TextEditingController(text: p.apiKey);
+
+    _temperature = TextEditingController(text: p.geminiTemperature?.toString() ?? '');
+    _topP = TextEditingController(text: p.geminiTopP?.toString() ?? '');
+    _topK = TextEditingController(text: p.geminiTopK?.toString() ?? '');
+    _maxOutputTokens =
+        TextEditingController(text: p.geminiMaxOutputTokens?.toString() ?? '');
 
     _baseUrlFocus.addListener(_commitIfNeeded);
     _modelFocus.addListener(_commitIfNeeded);
     _apiKeyFocus.addListener(_commitIfNeeded);
+    _temperatureFocus.addListener(_commitIfNeeded);
+    _topPFocus.addListener(_commitIfNeeded);
+    _topKFocus.addListener(_commitIfNeeded);
+    _maxOutputTokensFocus.addListener(_commitIfNeeded);
   }
 
   @override
@@ -495,10 +605,36 @@ class _GeminiSettingsTabBodyState extends State<_GeminiSettingsTabBody> {
     if (!_apiKeyFocus.hasFocus && _apiKey.text != p.apiKey) {
       _apiKey.text = p.apiKey;
     }
+
+    final temperatureText = p.geminiTemperature?.toString() ?? '';
+    if (!_temperatureFocus.hasFocus && _temperature.text != temperatureText) {
+      _temperature.text = temperatureText;
+    }
+
+    final topPText = p.geminiTopP?.toString() ?? '';
+    if (!_topPFocus.hasFocus && _topP.text != topPText) {
+      _topP.text = topPText;
+    }
+
+    final topKText = p.geminiTopK?.toString() ?? '';
+    if (!_topKFocus.hasFocus && _topK.text != topKText) {
+      _topK.text = topKText;
+    }
+
+    final maxOutputText = p.geminiMaxOutputTokens?.toString() ?? '';
+    if (!_maxOutputTokensFocus.hasFocus && _maxOutputTokens.text != maxOutputText) {
+      _maxOutputTokens.text = maxOutputText;
+    }
   }
 
   void _commitIfNeeded() {
-    if (_baseUrlFocus.hasFocus || _modelFocus.hasFocus || _apiKeyFocus.hasFocus) {
+    if (_baseUrlFocus.hasFocus ||
+        _modelFocus.hasFocus ||
+        _apiKeyFocus.hasFocus ||
+        _temperatureFocus.hasFocus ||
+        _topPFocus.hasFocus ||
+        _topKFocus.hasFocus ||
+        _maxOutputTokensFocus.hasFocus) {
       return;
     }
 
@@ -512,6 +648,26 @@ class _GeminiSettingsTabBodyState extends State<_GeminiSettingsTabBody> {
     if (_apiKey.text != p.apiKey) {
       widget.controller.setProfileApiKey(_apiKey.text);
     }
+
+    final temperatureText = p.geminiTemperature?.toString() ?? '';
+    if (_temperature.text.trim() != temperatureText) {
+      widget.controller.setProfileGeminiTemperature(_temperature.text);
+    }
+
+    final topPText = p.geminiTopP?.toString() ?? '';
+    if (_topP.text.trim() != topPText) {
+      widget.controller.setProfileGeminiTopP(_topP.text);
+    }
+
+    final topKText = p.geminiTopK?.toString() ?? '';
+    if (_topK.text.trim() != topKText) {
+      widget.controller.setProfileGeminiTopK(_topK.text);
+    }
+
+    final maxOutputText = p.geminiMaxOutputTokens?.toString() ?? '';
+    if (_maxOutputTokens.text.trim() != maxOutputText) {
+      widget.controller.setProfileGeminiMaxOutputTokens(_maxOutputTokens.text);
+    }
   }
 
   @override
@@ -519,12 +675,24 @@ class _GeminiSettingsTabBodyState extends State<_GeminiSettingsTabBody> {
     _baseUrlFocus.removeListener(_commitIfNeeded);
     _modelFocus.removeListener(_commitIfNeeded);
     _apiKeyFocus.removeListener(_commitIfNeeded);
+    _temperatureFocus.removeListener(_commitIfNeeded);
+    _topPFocus.removeListener(_commitIfNeeded);
+    _topKFocus.removeListener(_commitIfNeeded);
+    _maxOutputTokensFocus.removeListener(_commitIfNeeded);
     _baseUrlFocus.dispose();
     _modelFocus.dispose();
     _apiKeyFocus.dispose();
+    _temperatureFocus.dispose();
+    _topPFocus.dispose();
+    _topKFocus.dispose();
+    _maxOutputTokensFocus.dispose();
     _baseUrl.dispose();
     _model.dispose();
     _apiKey.dispose();
+    _temperature.dispose();
+    _topP.dispose();
+    _topK.dispose();
+    _maxOutputTokens.dispose();
     super.dispose();
   }
 
@@ -571,6 +739,55 @@ class _GeminiSettingsTabBodyState extends State<_GeminiSettingsTabBody> {
           obscureText: true,
           onSubmitted: (_) => _commitIfNeeded(),
         ),
+
+        const SizedBox(height: 16),
+        const Text('Generation', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _temperature,
+          focusNode: _temperatureFocus,
+          decoration: const InputDecoration(
+            labelText: 'temperature（可选，留空表示不传）',
+            helperText: '示例：0.2 / 0.7 / 1.0',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _topP,
+          focusNode: _topPFocus,
+          decoration: const InputDecoration(
+            labelText: 'topP（可选，留空表示不传）',
+            helperText: '示例：0.9（一般为 0~1）',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _topK,
+          focusNode: _topKFocus,
+          decoration: const InputDecoration(
+            labelText: 'topK（可选，留空表示不传）',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _maxOutputTokens,
+          focusNode: _maxOutputTokensFocus,
+          decoration: const InputDecoration(
+            labelText: 'maxOutputTokens（可选，留空表示不传）',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
       ],
     );
   }
@@ -590,11 +807,17 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
   late final TextEditingController _maxTokens;
+  late final TextEditingController _temperature;
+  late final TextEditingController _topP;
+  late final TextEditingController _topK;
   late final TextEditingController _apiKey;
 
   final FocusNode _baseUrlFocus = FocusNode();
   final FocusNode _modelFocus = FocusNode();
   final FocusNode _maxTokensFocus = FocusNode();
+  final FocusNode _temperatureFocus = FocusNode();
+  final FocusNode _topPFocus = FocusNode();
+  final FocusNode _topKFocus = FocusNode();
   final FocusNode _apiKeyFocus = FocusNode();
 
   @override
@@ -604,11 +827,17 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
     _baseUrl = TextEditingController(text: p.baseUrl);
     _model = TextEditingController(text: p.model);
     _maxTokens = TextEditingController(text: p.claudeMaxTokens.toString());
+    _temperature = TextEditingController(text: p.claudeTemperature?.toString() ?? '');
+    _topP = TextEditingController(text: p.claudeTopP?.toString() ?? '');
+    _topK = TextEditingController(text: p.claudeTopK?.toString() ?? '');
     _apiKey = TextEditingController(text: p.apiKey);
 
     _baseUrlFocus.addListener(_commitIfNeeded);
     _modelFocus.addListener(_commitIfNeeded);
     _maxTokensFocus.addListener(_commitIfNeeded);
+    _temperatureFocus.addListener(_commitIfNeeded);
+    _topPFocus.addListener(_commitIfNeeded);
+    _topKFocus.addListener(_commitIfNeeded);
     _apiKeyFocus.addListener(_commitIfNeeded);
   }
 
@@ -626,6 +855,22 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
     if (!_maxTokensFocus.hasFocus && _maxTokens.text != maxTokensText) {
       _maxTokens.text = maxTokensText;
     }
+
+    final temperatureText = p.claudeTemperature?.toString() ?? '';
+    if (!_temperatureFocus.hasFocus && _temperature.text != temperatureText) {
+      _temperature.text = temperatureText;
+    }
+
+    final topPText = p.claudeTopP?.toString() ?? '';
+    if (!_topPFocus.hasFocus && _topP.text != topPText) {
+      _topP.text = topPText;
+    }
+
+    final topKText = p.claudeTopK?.toString() ?? '';
+    if (!_topKFocus.hasFocus && _topK.text != topKText) {
+      _topK.text = topKText;
+    }
+
     if (!_apiKeyFocus.hasFocus && _apiKey.text != p.apiKey) {
       _apiKey.text = p.apiKey;
     }
@@ -635,6 +880,9 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
     if (_baseUrlFocus.hasFocus ||
         _modelFocus.hasFocus ||
         _maxTokensFocus.hasFocus ||
+        _temperatureFocus.hasFocus ||
+        _topPFocus.hasFocus ||
+        _topKFocus.hasFocus ||
         _apiKeyFocus.hasFocus) {
       return;
     }
@@ -649,6 +897,21 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
     if (_maxTokens.text.trim() != p.claudeMaxTokens.toString()) {
       widget.controller.setProfileClaudeMaxTokens(_maxTokens.text);
     }
+
+    final temperatureText = p.claudeTemperature?.toString() ?? '';
+    if (_temperature.text.trim() != temperatureText) {
+      widget.controller.setProfileClaudeTemperature(_temperature.text);
+    }
+
+    final topPText = p.claudeTopP?.toString() ?? '';
+    if (_topP.text.trim() != topPText) {
+      widget.controller.setProfileClaudeTopP(_topP.text);
+    }
+
+    final topKText = p.claudeTopK?.toString() ?? '';
+    if (_topK.text.trim() != topKText) {
+      widget.controller.setProfileClaudeTopK(_topK.text);
+    }
     if (_apiKey.text != p.apiKey) {
       widget.controller.setProfileApiKey(_apiKey.text);
     }
@@ -659,14 +922,23 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
     _baseUrlFocus.removeListener(_commitIfNeeded);
     _modelFocus.removeListener(_commitIfNeeded);
     _maxTokensFocus.removeListener(_commitIfNeeded);
+    _temperatureFocus.removeListener(_commitIfNeeded);
+    _topPFocus.removeListener(_commitIfNeeded);
+    _topKFocus.removeListener(_commitIfNeeded);
     _apiKeyFocus.removeListener(_commitIfNeeded);
     _baseUrlFocus.dispose();
     _modelFocus.dispose();
     _maxTokensFocus.dispose();
+    _temperatureFocus.dispose();
+    _topPFocus.dispose();
+    _topKFocus.dispose();
     _apiKeyFocus.dispose();
     _baseUrl.dispose();
     _model.dispose();
     _maxTokens.dispose();
+    _temperature.dispose();
+    _topP.dispose();
+    _topK.dispose();
     _apiKey.dispose();
     super.dispose();
   }
@@ -709,6 +981,44 @@ class _ClaudeSettingsTabBodyState extends State<_ClaudeSettingsTabBody> {
           focusNode: _maxTokensFocus,
           decoration: const InputDecoration(
             labelText: 'Claude max_tokens',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+
+        const SizedBox(height: 16),
+        const Text('Sampling（可选）', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _temperature,
+          focusNode: _temperatureFocus,
+          decoration: const InputDecoration(
+            labelText: 'temperature（可选，留空表示不传）',
+            helperText: '示例：0.2 / 0.7 / 1.0',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _topP,
+          focusNode: _topPFocus,
+          decoration: const InputDecoration(
+            labelText: 'top_p（可选，留空表示不传）',
+            helperText: '示例：0.9（一般为 0~1）',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onSubmitted: (_) => _commitIfNeeded(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _topK,
+          focusNode: _topKFocus,
+          decoration: const InputDecoration(
+            labelText: 'top_k（可选，留空表示不传）',
             border: OutlineInputBorder(),
           ),
           keyboardType: TextInputType.number,
