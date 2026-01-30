@@ -17,8 +17,10 @@ on:
         default: true
 
 env:
-  # 建议锁定具体 Flutter 版本，避免 stable 元数据解析失败
-  FLUTTER_VERSION: "3.22.3"
+  # 你的 pubspec 里如果写了 environment:sdk: ^3.10.7 这类约束，
+  # 就必须用带 Dart >=3.10.7 的 Flutter 才能 pub get 通过。
+  # Flutter 3.38 系列对应 Dart 3.10（详见 Flutter/Dart 发布说明）。
+  FLUTTER_VERSION: "3.38.6"
   PROJECT_DIR: "."
 
 jobs:
@@ -100,6 +102,11 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
+      - name: Print toolchain versions
+        run: |
+          flutter --version
+          dart --version
+
       - name: Pub get
         run: flutter pub get
 
@@ -143,6 +150,11 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
+      - name: Print toolchain versions
+        run: |
+          flutter --version
+          dart --version
+
       - name: Pub get
         run: flutter pub get
 
@@ -178,6 +190,11 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+
+      - name: Print toolchain versions
+        run: |
+          flutter --version
+          dart --version
 
       - name: Pub get
         run: flutter pub get
@@ -221,6 +238,11 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+
+      - name: Print toolchain versions
+        run: |
+          flutter --version
+          dart --version
 
       - name: Pub get
         run: flutter pub get
