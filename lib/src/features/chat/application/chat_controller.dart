@@ -17,6 +17,59 @@ final chatControllerProvider =
 class ChatController extends Notifier<ChatState> {
   bool _hydrated = false;
 
+  /// 编辑一条 user/assistant 消息。
+  ///
+  /// 约束：
+  /// - 生成中（[ChatState.isGenerating]）不允许编辑，直接 no-op。
+  /// - 仅支持 user/assistant；system（若未来加入）直接忽略。
+  ///
+  /// 行为：
+  /// - 默认仅修改目标消息本身；如果 [truncateAfter] 为 true，则删除该条消息之后的所有消息。
+  /// - 会更新 session.updatedAt 并根据当前排序模式重新排序会话列表。
+  void editMessage({
+    required String messageId,
+    required String content,
+    List<ChatAttachment>? attachments,
+    required bool truncateAfter,
+  }) {
+    if (state.isGenerating) return;
+
+    final sessionId = state.activeSessionId;
+    final session = state.sessions.firstWhere((s) => s.id == sessionId);
+    final idx = session.messages.indexWhere((m) => m.id == messageId);
+    if (idx < 0) return;
+
+    final target = session.messages[idx];
+    if (target.role == ChatRole.system) return;
+
+    final updatedMessage = target.copyWith(
+      content: content,
+      attachments: attachments,
+    );
+
+    var msgs = List<ChatMessage>.of(session.messages);
+    msgs[idx] = updatedMessage;
+    if (truncateAfter) {
+      msgs = msgs.take(idx + 1).toList(growable: false);
+    } else {
+      msgs = msgs.toList(growable: false);
+    }
+
+    final updatedAt = DateTime.now();
+    final nextSessions = state.sessions
+        .map(
+          (s) => s.id == sessionId ? s.copyWith(messages: msgs, updatedAt: updatedAt) : s,
+        )
+        .toList(growable: false);
+
+    state = state.copyWith(
+      sessions: _sortedSessions(nextSessions, state.sessionSortMode),
+    );
+
+    _persistSessionById(sessionId);
+    _persistMeta();
+  }
+
   void setSessionSortMode(SessionSortMode mode) {
     state = state.copyWith(
       sessionSortMode: mode,
