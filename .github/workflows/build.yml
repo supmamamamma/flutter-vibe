@@ -1,4 +1,4 @@
-name: Build Flutter (by Tag or Manual)
+name: Build Flutter (Tag + Manual, Multi-Platform)
 
 on:
   push:
@@ -10,9 +10,15 @@ on:
         description: "Version like 1.2.3 or v1.2.3 or 1.2.3+45"
         required: true
         type: string
+      web_wasm:
+        description: "Build Web with --wasm"
+        required: false
+        type: boolean
+        default: true
 
 env:
-  FLUTTER_VERSION: "stable"
+  # 建议锁定具体 Flutter 版本，避免 stable 元数据解析失败
+  FLUTTER_VERSION: "3.22.3"
   PROJECT_DIR: "."
 
 jobs:
@@ -23,6 +29,7 @@ jobs:
       raw_version: ${{ steps.ver.outputs.raw_version }}
       build_name: ${{ steps.ver.outputs.build_name }}
       build_number: ${{ steps.ver.outputs.build_number }}
+      web_wasm: ${{ steps.ver.outputs.web_wasm }}
     steps:
       - id: ver
         shell: bash
@@ -40,7 +47,7 @@ jobs:
           RAW="${RAW#v}"                     # 1.2.3 or 1.2.3+45
 
           # 3) split build name / number
-          # If tag has +number, use it as build-number; else fallback to run_number.
+          # If version has +number, use it as build-number; else fallback to run_number.
           if [[ "$RAW" == *"+"* ]]; then
             BUILD_NAME="${RAW%%+*}"
             BUILD_NUMBER="${RAW##*+}"
@@ -55,14 +62,23 @@ jobs:
             exit 1
           fi
 
+          # web wasm flag: for push-tag, default true; for manual, use inputs.web_wasm
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            WEB_WASM="true"
+          else
+            WEB_WASM="${{ inputs.web_wasm }}"
+          fi
+
           echo "raw_version=$RAW" >> "$GITHUB_OUTPUT"
           echo "build_name=$BUILD_NAME" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "web_wasm=$WEB_WASM" >> "$GITHUB_OUTPUT"
 
           echo "Resolved:"
           echo "  RAW=$RAW"
           echo "  BUILD_NAME=$BUILD_NAME"
           echo "  BUILD_NUMBER=$BUILD_NUMBER"
+          echo "  WEB_WASM=$WEB_WASM"
 
   web:
     name: Build Web
@@ -75,16 +91,30 @@ jobs:
       BUILD_NAME: ${{ needs.prepare.outputs.build_name }}
       BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
       RAW_VERSION: ${{ needs.prepare.outputs.raw_version }}
+      WEB_WASM: ${{ needs.prepare.outputs.web_wasm }}
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+
+      - uses: subosito/flutter-action@v2.14.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
           cache: true
-      - run: flutter pub get
-      - run: flutter build web --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
-      - uses: actions/upload-artifact@v4
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Build Web (release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${WEB_WASM}" == "true" ]]; then
+            flutter build web --release --wasm --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          else
+            flutter build web --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          fi
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
         with:
           name: web-${{ env.RAW_VERSION }}
           path: ${{ env.PROJECT_DIR }}/build/web
@@ -102,19 +132,28 @@ jobs:
       RAW_VERSION: ${{ needs.prepare.outputs.raw_version }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
-      - uses: subosito/flutter-action@v2
+
+      - uses: subosito/flutter-action@v2.14.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
           cache: true
-      - run: flutter pub get
-      - run: flutter build apk --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
-      - run: flutter build appbundle --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
-      - uses: actions/upload-artifact@v4
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Build APK (release)
+        run: flutter build apk --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+
+      - name: Build App Bundle (release)
+        run: flutter build appbundle --release --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: android-${{ env.RAW_VERSION }}
           path: |
@@ -134,20 +173,32 @@ jobs:
       RAW_VERSION: ${{ needs.prepare.outputs.raw_version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+
+      - uses: subosito/flutter-action@v2.14.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
           cache: true
-      - run: flutter pub get
-      - run: flutter build ios --release --no-codesign --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+
+      - name: Pub get
+        run: flutter pub get
+
+      # 不做签名：适合 CI 编译验证；如需 IPA/上架需配置证书/Provisioning Profile
+      - name: Build iOS (release, no codesign)
+        run: flutter build ios --release --no-codesign --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+
       - name: Package .app
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           APP_PATH="build/ios/iphoneos/Runner.app"
-          test -d "$APP_PATH"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Runner.app not found at $APP_PATH"
+            exit 1
+          fi
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "ios-Runner-${RAW_VERSION}.app.zip"
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ios-${{ env.RAW_VERSION }}
           path: ${{ env.PROJECT_DIR }}/ios-Runner-${{ env.RAW_VERSION }}.app.zip
@@ -165,13 +216,18 @@ jobs:
       RAW_VERSION: ${{ needs.prepare.outputs.raw_version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+
+      - uses: subosito/flutter-action@v2.14.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
           cache: true
-      - run: flutter pub get
-      - run: flutter build windows --release --build-name="${{ env.BUILD_NAME }}" --build-number="${{ env.BUILD_NUMBER }}"
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Build Windows (release)
+        run: flutter build windows --release --build-name="${{ env.BUILD_NAME }}" --build-number="${{ env.BUILD_NUMBER }}"
+
       - name: Package Windows output
         shell: pwsh
         run: |
@@ -181,9 +237,11 @@ jobs:
           elseif (Test-Path $out2) { $out = $out2 }
           else { throw "Windows build output not found." }
 
-          $zip = "windows-release-${env:RAW_VERSION}.zip"
+          $zip = "windows-release-$env:RAW_VERSION.zip"
           Compress-Archive -Path "$out\*" -DestinationPath $zip -Force
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
         with:
           name: windows-${{ env.RAW_VERSION }}
           path: ${{ env.PROJECT_DIR }}/windows-release-${{ env.RAW_VERSION }}.zip
